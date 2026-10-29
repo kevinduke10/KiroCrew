@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from kiro_crew.acp_backends import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_COPILOT,
@@ -41,6 +42,7 @@ from kiro_crew.acp_backends import (
     ACP_BACKEND_PI,
 )
 from kiro_crew.providers.mirrors.base import AgentConfigMirror
+from kiro_crew.providers.mirrors.bedrock import BedrockMirror
 from kiro_crew.providers.mirrors.claude_code import ClaudeCodeMirror
 from kiro_crew.providers.mirrors.codex import CodexMirror
 from kiro_crew.providers.mirrors.copilot import CopilotMirror
@@ -219,6 +221,7 @@ class McpProjection:
 
 #: Backends whose spec projection lives in this folder.
 MIRRORS: dict[str, type[AgentConfigMirror]] = {
+    ACP_BACKEND_BEDROCK: BedrockMirror,
     ACP_BACKEND_CLAUDE: ClaudeCodeMirror,
     ACP_BACKEND_CODEX: CodexMirror,
     ACP_BACKEND_OPENCODE: OpenCodeMirror,
@@ -233,6 +236,11 @@ MIRRORS: dict[str, type[AgentConfigMirror]] = {
 #: selectable backend to exactly one entry here, so a new harness cannot reach the
 #: dashboard switch without one of these four answers being written down.
 PROJECTIONS: dict[str, McpProjection] = {
+    ACP_BACKEND_BEDROCK: McpProjection(
+        kind=ProjectionKind.MIRROR,
+        reason="The bundled runtime mounts the projected session MCP array only.",
+        per_tool_deny=PerToolDeny.WHOLE_SERVER,
+    ),
     ACP_BACKEND_KIRO: McpProjection(
         kind=ProjectionKind.NATIVE,
         reason=(

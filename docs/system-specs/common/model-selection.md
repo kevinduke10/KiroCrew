@@ -9,6 +9,19 @@ This spec covers **choosing** a model before the wire. What happens when a model
 was already chosen stops working mid-session is
 [model-fallback.md](../modules/model-fallback.md).
 
+## Bedrock identifiers
+
+The shared validator and Settings pins also accept dotted, versioned Bedrock
+model IDs (`vendor.model-v1:0`) and Bedrock foundation-model, inference-profile,
+application-inference-profile, provisioned-model, custom-model-deployment and
+imported-model ARNs. `BEDROCK_MODEL_PATTERN` owns this branch; model pin fields
+allow up to 256 characters. This validates spelling, not access or API support.
+
+The `bedrock` backend has an independent model namespace and never asks
+`kiro-cli` for models. Set a concrete `agent.model` before prompting: `auto`
+produces an actionable error rather than selecting an arbitrary paid model.
+Role-specific pins use the existing `agent.role_models` configuration.
+
 ## The default is `"auto"`
 
 `agent.model` defaults to `"auto"` in `config/defaults.json`. Do not replace it with a

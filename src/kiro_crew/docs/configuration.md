@@ -9,6 +9,38 @@ The full set is declared in the config schema (`src/kiro_crew/config/sections.py
 and its sibling section modules), which the gateway serves at
 `GET /api/config/schema` and which **Developer → Config** renders.
 
+## Bedrock without an agent CLI
+
+Install the optional runtime in the Python environment running Kiro Crew:
+
+```bash
+pip install 'kirocrew[bedrock]'
+kirocrew config set agent.acp_backend bedrock
+kirocrew config set agent.model '<your Bedrock model ID or inference profile ARN>'
+```
+
+Replace the quoted placeholder with a model you can access. Keep `agent.provider`
+set to `acp`. Restart the gateway after changing backends. No `kiro-cli` or AWS CLI
+is required for this backend. AWS credentials are needed only when actually
+calling AWS, not for installing the package or running the mocked unit tests.
+
+Configure AWS Region and credentials through the standard Python AWS SDK chain
+(for example `AWS_DEFAULT_REGION` and an `AWS_PROFILE` with an existing shared
+credentials/config file) in the gateway's environment. Crew's existing sandbox
+and secret-environment filtering still apply; credentials must be available to
+the runtime under that policy. No keys belong in `config.json`.
+
+Use a model supporting the Bedrock Converse API, with tool calling support for
+agent work. There is no model allowlist or hardcoded default; `auto` asks you to
+choose a concrete model. AWS checks access when the request is sent. See
+[AWS API compatibility](https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html).
+
+This backend accepts text and uses Crew's approved MCP tools. Responses appear
+after each inference round. Native session restore, token streaming, model
+listing, native script hooks and non-Converse image/embedding APIs are not
+implemented. A failed or interrupted turn retains completed tool results in its
+live conversation and does not automatically repeat tool side effects.
+
 ## Managing Config
 
 ```bash

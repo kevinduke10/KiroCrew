@@ -13,6 +13,22 @@ that walks this list will find gaps the list does not predict; when it does, the
 gap belongs here in the same change, as a stage — not in the harness's own
 module as a special case.
 
+## Bundled Bedrock capability declaration
+
+`bedrock` is a selectable, independently installed backend with its own model
+namespace. It opts into per-session Python launch, MCP-array projection, zero-tool
+bans and explicit advertised-model selection semantics (an empty catalog trusts
+an explicit pin). It has no external agent executable. Its install probe checks
+Python package availability, without credential resolution or AWS calls.
+
+It does not opt into multiplexing, native session reload, compaction, member
+mounts, native hooks, steering, billing or catalog discovery. The runtime serves
+one text conversation and only projected MCP tools. Every tool call asks the
+host for permission by construction, so routing is `AGENT_SPEC`, with no native
+permission bypass or additional OS sandbox carveout. The host contract records
+these limits per bucket. Mocked tests establish transport behavior and tool-gate
+routing; they do not claim live AWS entitlement or provider compatibility.
+
 ## The two landing states
 
 A harness lands in one of two states, and choosing between them is Stage 7, not

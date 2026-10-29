@@ -29,6 +29,18 @@ the `internal-content-scan` check (blocking on pull requests, forks included) an
 the
 `no-new-builtin-apps` rule in `AUTOSDE.yaml`.
 
+## Spec-driven feature work
+
+Before starting or resuming feature work, run `python3 scripts/spec_tracker.py list`
+and read the matching plan plus its history. Follow
+[spec-driven development](docs/system-specs/common/spec-driven-development.md).
+Use a stable feature ID, write acceptance criteria before implementation, and update
+its plan, next step and append-only tracker checkpoints before ending a work session.
+Do not silently narrow a request or mark unchecked criteria complete. New feature
+plans following this workflow are authorized; index them in the existing plans README.
+Current behavior still belongs in the owning system specs. Commit and push rules below
+continue to apply.
+
 ## Read before you touch
 
 Load the doc for the row you are working in **before** you change code. Update it

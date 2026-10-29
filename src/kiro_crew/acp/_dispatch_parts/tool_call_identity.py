@@ -294,6 +294,9 @@ class _MetaIdentityChannel(NamedTuple):
 #: security gate needs to tell a genuine MCP tool from a shell command whose stdout the
 #: model authored.
 _MCP_IDENTITY_META_CHANNELS: tuple[_MetaIdentityChannel, ...] = (
+    _MetaIdentityChannel(
+        key="bedrock", server_field="serverName", tool_field="toolName", bounds_names=True
+    ),
     # The KAS row FIRST, and it answers only when its own ``serverName`` is present on
     # the block (``_meta_identity_full`` skips a bounded row whose server field is
     # absent): the two ``kiro`` rows share the ``toolName`` field, so consulted second

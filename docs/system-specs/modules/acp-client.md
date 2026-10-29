@@ -1,5 +1,23 @@
 # ACP Client Module
 
+## Bundled Bedrock transport
+
+`acp/harness/bedrock.py` launches the current Python interpreter with
+`-P -m kiro_crew.bedrock_runtime`, using Crew's interpreter isolation helper.
+The optional `boto3` and `mcp` packages are checked without connecting to AWS.
+ACP version 1 carries one session per process. The session receives its exact
+projected MCP array and the explicit model pin. `initialize` and `session/new`
+do not construct an AWS client; the first prompt does.
+
+Every MCP invocation emits an approval request with adapter-authored
+`_meta.bedrock.serverName` and `toolName` plus the original arguments. Only a
+selected allow option executes it. Model output cannot select a transport or
+server command. Completed tool results remain in conversation history after
+failure or cancellation; interrupted calls are marked uncertain, never replayed
+automatically. SDK retries are disabled. A cancelled SDK call remains owned until
+it finishes; a new request is refused while it is pending, and shutdown awaits
+it before closing the client. Network connect/read timeouts are 10/120 seconds.
+
 ## Overview
 
 The primary ACP session transport path spans **five** entry modules: the legacy per-session client (`acp/client.py`, one subprocess per session), the multiplexed runtime (`acp/runtime.py`, one subprocess fanned out to N sessions), the per-session handle (`acp/session_handle.py`, one `sessionId` + queue + prompt/approve/reject loop), a shared dispatch parser (`acp/_dispatch.py`, pure frame-shaping/redaction helpers all paths route through), and the session provider (`acp/session_provider.py`, `AcpSessionProvider` adapting an `AcpSessionHandle` to the `LLMProvider` ABC so runtime-backed sessions are interchangeable with `AcpClient`). All are JSON-RPC 2.0 over stdio for a registry-selected ACP harness, managing subprocess lifecycle, session initialization, prompt streaming, and tool permissions. Protocol constants live in `acp/types.py`; the complete backend and host-capability matrix is in [agent-host-contract.md](agent-host-contract.md#column-meaning).

@@ -57,6 +57,16 @@ alone while your claim lasts.
   issue.
 - The reply to your `/claim` comes from the daily triage run, so allow up to a day.
 
+## Spec-driven feature work
+
+Read [the spec-driven workflow](docs/system-specs/common/spec-driven-development.md)
+before starting or resuming a feature. Use
+`python3 scripts/spec_tracker.py list` to find tracked work and
+`python3 scripts/spec_tracker.py history SPEC-0001` to recover checkpoints. Each
+feature has a stable ID, an indexed plan, acceptance criteria, validation evidence
+and a next step. Update these before handing work off; run
+`python3 scripts/spec_tracker.py check --base origin/main` before review.
+
 ## Prerequisites
 
 - macOS, Linux, or Windows — Windows builds and runs natively from source, with

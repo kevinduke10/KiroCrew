@@ -12,6 +12,27 @@ and `BASELINE_SELECTABLE_BACKENDS` decides which ids an operator may choose.
 Several are selectable on a plain public build, so "one provider" never meant
 "one backend".
 
+## Native Bedrock backend
+
+`agent.acp_backend = "bedrock"` selects the bundled Python runtime in
+`bedrock_runtime/`. It uses boto3's Bedrock Runtime Converse API directly;
+no `kiro-cli`, AWS CLI or external agent executable is required. The public
+provider remains ACP, retaining the existing sandbox, session and permission
+seams. Install the `bedrock` extra and configure a concrete `agent.model` ID or
+inference profile. There is no implicit model substitution or catalog probe.
+
+The runtime supports text conversations and MCP tool use for Converse-compatible
+models. Tools require a model that supports Converse tool calling. Images,
+embeddings and models that require another Bedrock API are outside this runtime.
+Text arrives after each inference response, without token streaming. Conversations
+live in the process; native session reload, compaction, hooks, billing discovery
+and model discovery are not advertised. Crew's persisted history is independent
+of native reload. See the [host contract](agent-host-contract.md).
+
+Tests use fake inference and permission responses, with no AWS credentials or
+network calls. Real account entitlement and AWS connectivity require an operator's
+runtime configuration and are not established by those tests.
+
 ## Architecture
 
 Member execution carries one immutable member/store selection into provider
@@ -65,7 +86,7 @@ config isolation) is [acp-client.md](acp-client.md); this file owns the
 *interface*.
 
 **One provider, by invariant:** `AcpProvider` is the only provider the factory
-builds, and `agent.provider` stays `enum=["acp"]`. There is no Bedrock or
+builds, and `agent.provider` stays `enum=["acp"]`. The bundled Bedrock backend uses that same provider; there is no
 standalone provider and no multi-provider dispatch factory, because a second
 `agent.provider` value would route around every harness-parity invariant.
 

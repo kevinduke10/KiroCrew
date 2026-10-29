@@ -31,6 +31,7 @@ from kiro_crew.acp.harness.base import (
     SpawnPlan,
     TeardownPolicy,
 )
+from kiro_crew.acp.harness.bedrock import BedrockLaunch
 from kiro_crew.acp.harness.claude import ClaudeLaunch
 from kiro_crew.acp.harness.codex import CodexHarness
 from kiro_crew.acp.harness.copilot import CopilotLaunch
@@ -41,6 +42,7 @@ from kiro_crew.acp.harness.kiro import KiroHarness
 from kiro_crew.acp.harness.opencode import OpencodeLaunch
 from kiro_crew.acp.harness.pi import PiLaunch
 from kiro_crew.acp.types import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_COPILOT,
@@ -112,6 +114,7 @@ def harness_for(backend: str) -> HarnessAdapter:
 #: adapter. kiro-cli is not here: the client spawns it through its own explicit arm,
 #: which keeps the Kiro construction path the client always had (harness-parity H13).
 _PROCESS_ADAPTERS: dict[str, type[ProcessAdapter]] = {
+    ACP_BACKEND_BEDROCK: BedrockLaunch,
     ACP_BACKEND_CLAUDE: ClaudeLaunch,
     ACP_BACKEND_OPENCODE: OpencodeLaunch,
     ACP_BACKEND_GOOSE: GooseLaunch,

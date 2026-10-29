@@ -5,6 +5,7 @@ rather than restating them.
 
 | Document | Covers |
 |---|---|
+| [spec-driven-development.md](spec-driven-development.md) | Feature IDs, acceptance criteria, resumable work tracking and history validation. |
 | [code-style.md](code-style.md) | Where each constant and limit lives, comment style, and the lint rules you will trip. |
 | [model-selection.md](model-selection.md) | Never hardcoding a model id: the `"auto"` default, the resolver, role pins, and the entitlement predicate. |
 | [platform-compat.md](platform-compat.md) | The POSIX-call shim table: which `platform_compat` helper replaces each `fcntl` / `os.kill` / `resource` call, and why. |

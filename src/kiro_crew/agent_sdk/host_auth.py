@@ -62,6 +62,7 @@ from pathlib import PurePosixPath
 from typing import Dict, FrozenSet, Protocol, Tuple, runtime_checkable
 
 from kiro_crew.agent_sdk.backends import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_COPILOT,
@@ -113,7 +114,10 @@ ENTITLEMENT_HOST_VAULT = "host_vault"
 #: ``host_identity_store``. Snake_case internals in output a human is meant to read
 #: is a regression whether or not the fact behind it is right, so the label lives
 #: beside the identifier rather than being spelled at each print site.
+ENTITLEMENT_AWS_SDK = "aws_sdk"
+
 ENTITLEMENT_LABELS: Dict[str, str] = {
+    ENTITLEMENT_AWS_SDK: "the AWS SDK credential chain",
     ENTITLEMENT_HOST_IDENTITY_STORE: "kiro-cli's own sign-in",
     ENTITLEMENT_OWN_CREDENTIAL_FILE: "the harness's own credential file",
     ENTITLEMENT_HOST_VAULT: "a key in Kiro Crew's secret vault",
@@ -121,6 +125,7 @@ ENTITLEMENT_LABELS: Dict[str, str] = {
 
 ENTITLEMENT_SOURCES: FrozenSet[str] = frozenset(
     {
+        ENTITLEMENT_AWS_SDK,
         ENTITLEMENT_HOST_IDENTITY_STORE,
         ENTITLEMENT_OWN_CREDENTIAL_FILE,
         ENTITLEMENT_HOST_VAULT,
@@ -416,6 +421,16 @@ _KAS_SIGNED_OUT = (
 #: becomes selectable by joining that set, and joining it without an auth answer
 #: is exactly how a live OAuth token stayed off the credential floor once already.
 AGENT_AUTH_DECLARATIONS: Tuple[AgentAuthDeclaration, ...] = (
+    AgentAuthDeclaration(
+        backend=ACP_BACKEND_BEDROCK,
+        credential_leaves=(),
+        home_override_env_vars=(),
+        adapter_own_leaves=(),
+        sign_in_remedy="Configure an AWS Region and credentials through the AWS SDK credential chain.",
+        signed_out_message="Bedrock could not authenticate. Configure or refresh your AWS credentials.",
+        host_logout_retires_children=False,
+        entitlement_source=ENTITLEMENT_AWS_SDK,
+    ),
     AgentAuthDeclaration(
         backend=ACP_BACKEND_KIRO,
         # None of its own. kiro-cli signs in to the HOST identity store, whose

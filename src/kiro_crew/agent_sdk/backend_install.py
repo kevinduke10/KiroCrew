@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Tuple
 
 from kiro_crew.agent_sdk.backends import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_KAS,
@@ -180,6 +181,20 @@ class BackendInstallState:
     install_command: str = ""
     restart_required: bool = False
     found_version: str = ""
+
+
+def _probe_bedrock() -> BackendInstallState:
+    """The bundled runtime needs Python libraries, never an agent executable."""
+    from importlib.util import find_spec
+
+    missing = tuple(name for name in ("boto3", "mcp") if find_spec(name) is None)
+    return BackendInstallState(
+        ACP_BACKEND_BEDROCK,
+        _policy_id(ACP_BACKEND_BEDROCK),
+        MISSING if missing else INSTALLED,
+        missing,
+        "pip install 'kirocrew[bedrock]'" if missing else "",
+    )
 
 
 def _probe_kiro() -> BackendInstallState:
@@ -443,6 +458,7 @@ def _probe_pi() -> BackendInstallState:
 #: is the only one today. Nothing can detect the delegation automatically -- it is a
 #: call inside a function body -- so this note is the forcing function.
 _PROBES: Dict[str, Callable[[], BackendInstallState]] = {
+    ACP_BACKEND_BEDROCK: _probe_bedrock,
     ACP_BACKEND_KIRO: _probe_kiro,
     ACP_BACKEND_KAS: _probe_kas,
     ACP_BACKEND_CLAUDE: _probe_claude,

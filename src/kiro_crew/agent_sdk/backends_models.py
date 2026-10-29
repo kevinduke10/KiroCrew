@@ -20,6 +20,7 @@ import os
 from typing import Mapping
 
 from kiro_crew.agent_sdk.backends import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_COPILOT,
@@ -397,6 +398,7 @@ def effort_config_option_levels(backend: str, values: list[str]) -> list[str]:
 # plan with model choice can, through the same capture every member uses.
 ACP_BACKENDS_ADVERTISED_MODEL_SELECTION = frozenset(
     {
+        ACP_BACKEND_BEDROCK,
         ACP_BACKEND_CLAUDE,
         ACP_BACKEND_CODEX,
         ACP_BACKEND_OPENCODE,
@@ -524,6 +526,7 @@ _MODEL_REGISTRY_NAMESPACE_BY_BACKEND: dict = {
     # to them, so sharing the ``acp`` bucket would let a Copilot session replace the
     # list the picker offers for kiro-cli with models kiro-cli cannot serve.
     ACP_BACKEND_COPILOT: "copilot",
+    ACP_BACKEND_BEDROCK: "bedrock",
 }
 
 

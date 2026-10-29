@@ -65,6 +65,7 @@ from kiro_crew.acp.transport_errors import (
     registration_rate_limited_error,
 )
 from kiro_crew.acp.types import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_DEEPSEEK,
     ACP_BACKEND_GOOSE,
@@ -168,6 +169,7 @@ PROTOCOL_VERSION_DEEPSEEK = launch_for(ACP_BACKEND_DEEPSEEK).protocol_version
 #: keeps that path free of conditionals added in service of one. A harness added
 #: later is one row here; an id with no row speaks kiro-cli's date-stamped dialect.
 _PROTOCOL_VERSION_BY_BACKEND: dict[str, int | str] = {
+    ACP_BACKEND_BEDROCK: 1,
     ACP_BACKEND_CLAUDE: PROTOCOL_VERSION_CLAUDE,
     ACP_BACKEND_PI: PROTOCOL_VERSION_PI,
     # Every harness whose own binary serves ACP declares its dialect in its
@@ -613,6 +615,7 @@ async def _new_session_following_substitution(self: AcpClient) -> dict:
             *(self._deepseek_session_mcp_servers() if self._is_deepseek else []),
             *(self._copilot_session_mcp_servers() if self._is_copilot else []),
             *(self._pi_session_mcp_servers() if self._is_pi else []),
+            *({ACP_BACKEND_BEDROCK: self._session_mcp_cache or []}.get(self.backend, [])),
             *(await asyncio.to_thread(self._pooled_mcp_servers)),
         ],
     }
@@ -692,6 +695,7 @@ async def _new_session_following_substitution(self: AcpClient) -> dict:
             *(self._deepseek_session_mcp_servers() if self._is_deepseek else []),
             *(self._copilot_session_mcp_servers() if self._is_copilot else []),
             *(self._pi_session_mcp_servers() if self._is_pi else []),
+            *({ACP_BACKEND_BEDROCK: self._session_mcp_cache or []}.get(self.backend, [])),
             *(await asyncio.to_thread(self._pooled_mcp_servers)),
         ]
         if self.backend in ACP_BACKENDS_PRUNE_UNSTARTABLE_MCP:
@@ -919,6 +923,11 @@ async def _initialize_session(self: AcpClient) -> None:
                         *(self._deepseek_session_mcp_servers() if self._is_deepseek else []),
                         *(self._copilot_session_mcp_servers() if self._is_copilot else []),
                         *(self._pi_session_mcp_servers() if self._is_pi else []),
+                        *(
+                            {ACP_BACKEND_BEDROCK: self._session_mcp_cache or []}.get(
+                                self.backend, []
+                            )
+                        ),
                         *(await asyncio.to_thread(self._pooled_mcp_servers)),
                     ],
                 }

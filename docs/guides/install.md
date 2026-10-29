@@ -38,11 +38,19 @@ Builds use plain `pip` + `npm`/Vite + `pytest`, driven by the repo-root
 |-------------|------------|-------|
 | **Python** | Backend | `>= 3.12` (`requires-python` in `pyproject.toml`; `make build` provisions a 3.12 `.venv` by default) |
 | **Node.js + npm** | Building the dashboard | `>= 22.12.0` (`website/package.json` `engines`; Node 24 LTS recommended); on x86_64 Amazon Linux 2, the glibc-217 fallback installs Node 24 because official builds need a newer glibc (no glibc-217 arm64 build is available) |
-| **`kiro-cli`** | Driving the LLM | Required; see below |
+| **Agent runtime** | Driving the LLM | `kiro-cli` for the default backend, or the optional native Bedrock runtime |
 
 Node is only needed to *build* the dashboard. The prebuilt wheel, the DMG, the
 AppImage, and the Linux `.deb` / `.rpm` packages all ship the dashboard already
 bundled, so end users of those artifacts need neither Node nor a compiler.
+
+### Native Bedrock runtime
+
+Install `pip install 'kirocrew[bedrock]'` to use Bedrock directly without an
+agent CLI. Set `agent.acp_backend` to `bedrock` and choose an explicit model ID or
+inference profile. See [Bedrock configuration](../../src/kiro_crew/docs/configuration.md#bedrock-without-an-agent-cli)
+for credential resolution and supported features. Installing and testing the
+runtime needs no AWS credentials; actual inference does.
 
 ### Default agent backend: `kiro-cli`
 

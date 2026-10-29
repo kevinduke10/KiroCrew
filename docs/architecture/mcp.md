@@ -25,6 +25,20 @@ own gate model is [computer-use](../system-specs/modules/computer-use.md).
 > or run `kirocrew setup`, whose setup path calls the narrowly scoped
 > `mcp_cleanup.clean_stale_managed_mcp()` helper.
 
+## Native Bedrock tool transport
+
+The Bedrock mirror projects the same session grants into `session/new.mcpServers`.
+It withholds a whole server when a per-tool restriction cannot be projected.
+The runtime mounts only that array using the MCP Python SDK (stdio, HTTP or SSE),
+with session-owned connections and bounded SDK reads. It advertises no native
+filesystem or shell tools. Stdio children inherit Crew's sandbox and receive the
+MCP SDK's minimal environment plus explicitly projected server variables.
+
+Bedrock tool names are deterministic hashes of the server/tool pair; the local
+catalog maps them back to the original identity for Crew's approval gate. Each
+call asks permission, including calls a model repeats. Text and structured MCP
+results are returned to Bedrock, and text results also reach ACP tool updates.
+
 ## Config file hierarchy
 
 | File | Owner | Purpose | Read by |

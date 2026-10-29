@@ -271,11 +271,18 @@ ARTIFACT_SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?\Z")
 # segment may carry a ``:tag``. The Settings model pins share the qualified branch.
 _MODEL_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9._-]*"
 QUALIFIED_MODEL_PATTERN: str = rf"{_MODEL_SEGMENT}(?:/{_MODEL_SEGMENT})+(?::{_MODEL_SEGMENT})?"
+# Bedrock versioned model ids and resource ARNs are identifiers, not paths.
+BEDROCK_MODEL_PATTERN = (
+    rf"(?:{_MODEL_SEGMENT}\.{_MODEL_SEGMENT}:[0-9]+"
+    rf"|arn:aws(?:-[a-z0-9-]+)?:bedrock:[a-z0-9-]+:(?:[0-9]{{12}})?:"
+    rf"(?:foundation-model|inference-profile|application-inference-profile|"
+    rf"provisioned-model|custom-model-deployment|imported-model)/{_MODEL_SEGMENT}(?::[0-9]+)?)"
+)
 # The bound ``model_registry`` keeps on an advertised id.
 _QUALIFIED_MODEL_MAX_CHARS = 256
 _MODEL_NAME_RE = re.compile(
     rf"(?:{_MODEL_SEGMENT}(?:\[[A-Za-z0-9._-]+\])?"
-    rf"|(?=.{{1,{_QUALIFIED_MODEL_MAX_CHARS}}}\Z){QUALIFIED_MODEL_PATTERN})\Z"
+    rf"|(?=.{{1,{_QUALIFIED_MODEL_MAX_CHARS}}}\Z)(?:{QUALIFIED_MODEL_PATTERN}|{BEDROCK_MODEL_PATTERN}))\Z"
 )
 #: The shape ``_MODEL_NAME_RE`` admits, in words, for a CLI refusal. The
 #: refusal names the shape and never echoes the rejected value.

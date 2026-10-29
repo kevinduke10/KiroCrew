@@ -1,5 +1,14 @@
 # Config Module
 
+## Bedrock selection
+
+`agent.provider` remains `acp`; `agent.acp_backend` accepts the registry's
+`bedrock` backend. Its model is an explicit Bedrock ID or inference profile in
+`agent.model`. Settings model pins accept up to 256 characters and share the
+Bedrock identifier grammar in `validation_parts/input_bounds.py`. AWS credentials
+are not config fields: the native runtime uses boto3's credential and Region
+resolution, subject to the existing child environment and sandbox policy.
+
 ## Overview
 
 The config package loads runtime configuration from `~/.kiro/crew/config.json`

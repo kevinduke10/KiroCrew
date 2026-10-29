@@ -26,6 +26,13 @@ New here? Start with [guides/install.md](guides/install.md), then
 | [task-specs/](task-specs/README.md) | Archived per-task specs. Not current context. |
 | `../.kiro/specs/` (repo root) | Archived feature specs from the repo's own Spec Builder runs. Each file's `Status` marker says what it is; not current context. Spec Builder writes live specs to `<project>/.kiro/specs/` in the user's project, not here. |
 
+## Feature development
+
+Start with [spec-driven development](system-specs/common/spec-driven-development.md),
+then inspect the [work tracker](request-for-change/plans/work-tracker.json) and
+[indexed plans](request-for-change/plans/README.md). Feature plans capture intent,
+acceptance and progress; owning system specs describe implemented behavior.
+
 ## The rule for changing docs
 
 A code change that alters documented behavior MUST update the docs **in the same

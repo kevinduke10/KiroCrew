@@ -46,6 +46,7 @@ from kiro_crew.acp.session_handle_native_children import (
     _note_native_child,
 )
 from kiro_crew.acp.types import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_CLIENT_CAPABILITIES,
     EVENT_SUBAGENT_ACTIVITY,
@@ -84,6 +85,7 @@ CLAUDE_CLIENT_CAPABILITIES: dict = {**ACP_CLIENT_CAPABILITIES, "subagents": {}}
 #: ``clientCapabilities`` per ``AcpClient`` backend; a backend with no row declares
 #: the shared :data:`ACP_CLIENT_CAPABILITIES` unchanged.
 CLIENT_CAPABILITIES_BY_BACKEND: dict[str, dict] = {
+    ACP_BACKEND_BEDROCK: {},
     ACP_BACKEND_CLAUDE: CLAUDE_CLIENT_CAPABILITIES,
 }
 

@@ -273,6 +273,7 @@ logger = logging.getLogger(__name__)
 # ``acp.types`` re-exports these, so every existing call site keeps importing
 # them from there; this module is only where they are DEFINED.
 
+ACP_BACKEND_BEDROCK = "bedrock"
 ACP_BACKEND_CLAUDE = "claude"
 ACP_BACKEND_KAS = "kas"
 # The Codex ACP adapter: a Node stdio server that boots the Codex app server and
@@ -361,6 +362,7 @@ DEFAULT_ACP_BACKEND = ACP_BACKEND_KAS
 ACP_BACKENDS_KNOWN: FrozenSet[str] = frozenset(
     {
         ACP_BACKEND_KIRO,
+        ACP_BACKEND_BEDROCK,
         ACP_BACKEND_CLAUDE,
         ACP_BACKEND_KAS,
         ACP_BACKEND_CODEX,
@@ -378,6 +380,7 @@ ACP_BACKENDS_KNOWN: FrozenSet[str] = frozenset(
 # because its id is neither Kiro nor KAS.
 ACP_BACKENDS_INDEPENDENT_SETUP: FrozenSet[str] = frozenset(
     {
+        ACP_BACKEND_BEDROCK,
         ACP_BACKEND_CLAUDE,
         ACP_BACKEND_CODEX,
         ACP_BACKEND_OPENCODE,
@@ -491,6 +494,7 @@ ACP_BACKENDS_INDEPENDENT_SETUP: FrozenSet[str] = frozenset(
 #:   session. See :data:`Routing.SESSION_CONFIG`.
 BASELINE_SELECTABLE_BACKENDS: FrozenSet[str] = frozenset(
     {
+        ACP_BACKEND_BEDROCK,
         ACP_BACKEND_KIRO,
         ACP_BACKEND_CLAUDE,
         ACP_BACKEND_KAS,
@@ -514,6 +518,7 @@ BASELINE_SELECTABLE_BACKENDS: FrozenSet[str] = frozenset(
 POLICY_ID_KIRO = "kiro"
 
 POLICY_ID_BY_BACKEND: dict = {
+    ACP_BACKEND_BEDROCK: ACP_BACKEND_BEDROCK,
     ACP_BACKEND_KIRO: POLICY_ID_KIRO,
     ACP_BACKEND_KAS: ACP_BACKEND_KAS,
     ACP_BACKEND_CLAUDE: ACP_BACKEND_CLAUDE,

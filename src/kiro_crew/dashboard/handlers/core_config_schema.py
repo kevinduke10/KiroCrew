@@ -58,6 +58,7 @@ from kiro_crew.dashboard.handlers.core_config_models import _validate_role_model
 from kiro_crew.effort import EFFORT_LEVELS
 from kiro_crew.instances.crew_ref import MAX_CREW_REF_LEN
 from kiro_crew.validation import QUALIFIED_MODEL_PATTERN
+from kiro_crew.validation_parts.input_bounds import BEDROCK_MODEL_PATTERN
 
 
 # Allowed editable config paths and their validators
@@ -101,7 +102,9 @@ def _acp_backend_patch_values() -> list[str]:
 # disabled, per key) still matches. Malformed segments (`a//b`, `/a`, `a/`) and
 # shell metacharacters are refused. One constant so a picker cannot offer an id a
 # sibling pin refuses.
-_MODEL_PIN_PATTERN = rf"(?:[A-Za-z0-9][A-Za-z0-9._\-\[\]]*|{QUALIFIED_MODEL_PATTERN})?\Z"
+_MODEL_PIN_PATTERN = (
+    rf"(?:[A-Za-z0-9][A-Za-z0-9._\-\[\]]*|{QUALIFIED_MODEL_PATTERN}|{BEDROCK_MODEL_PATTERN})?\Z"
+)
 
 
 _EDITABLE_CONFIG: dict[str, dict] = {
@@ -128,7 +131,7 @@ _EDITABLE_CONFIG: dict[str, dict] = {
     # (provider-qualified on OpenCode) — and an unknown-but-well-formed id is
     # rejected downstream by kiro itself rather than silently accepted here.
     # "auto"/"" = defer to the agent config / kiro's own default.
-    "agent.model": {"type": "str", "max_len": 64, "pattern": _MODEL_PIN_PATTERN},
+    "agent.model": {"type": "str", "max_len": 256, "pattern": _MODEL_PIN_PATTERN},
     # Per-task-class model overrides. The model-pin grammar (the real
     # vocabulary is whatever the backend advertises, provider-qualified on
     # OpenCode). "" / "auto" defers to the chat default. `validate_fn`
@@ -136,13 +139,13 @@ _EDITABLE_CONFIG: dict[str, dict] = {
     # account's entitlement cannot honor.
     "agent.role_models.background": {
         "type": "str",
-        "max_len": 64,
+        "max_len": 256,
         "pattern": _MODEL_PIN_PATTERN,
         "validate_fn": _validate_role_model,
     },
     "agent.role_models.subagent": {
         "type": "str",
-        "max_len": 64,
+        "max_len": 256,
         "pattern": _MODEL_PIN_PATTERN,
         "validate_fn": _validate_role_model,
     },
@@ -153,7 +156,7 @@ _EDITABLE_CONFIG: dict[str, dict] = {
     # always allow), so the dropdown and the wire cannot disagree.
     "agent.fallback_model": {
         "type": "str",
-        "max_len": 64,
+        "max_len": 256,
         "pattern": _MODEL_PIN_PATTERN,
         "validate_fn": _validate_role_model,
     },
@@ -164,7 +167,7 @@ _EDITABLE_CONFIG: dict[str, dict] = {
     # "auto" always allow), so the dropdown and the wire cannot disagree.
     "agent.refusal_fallback_model": {
         "type": "str",
-        "max_len": 64,
+        "max_len": 256,
         "pattern": _MODEL_PIN_PATTERN,
         "validate_fn": _validate_role_model,
     },
@@ -510,7 +513,7 @@ _EDITABLE_CONFIG: dict[str, dict] = {
 for _tier in DECISION_MODEL_ROUTE_TIERS:
     _EDITABLE_CONFIG[f"decisions.model_route.{_tier}"] = {
         "type": "str",
-        "max_len": 64,
+        "max_len": 256,
         # OpenCode's picker advertises provider/model ids. Allow those while
         # retaining the empty INHERIT value and rejecting malformed segments.
         "pattern": _MODEL_PIN_PATTERN,
@@ -557,7 +560,7 @@ _EDITABLE_CONFIG["decisions.nudge_wake.llm_model"] = {
 # withholds an id the account cannot run, as it does for every other pin.
 _APP_MODEL_SPEC: dict = {
     "type": "str",
-    "max_len": 64,
+    "max_len": 256,
     "pattern": _MODEL_PIN_PATTERN,
     "validate_fn": _validate_role_model,
 }

@@ -15,6 +15,7 @@ in ``VOCABULARY_PATHS``, which is what lets its ``ACP_BACKEND*`` names be define
 from __future__ import annotations
 
 from kiro_crew.agent_sdk.backends import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_COPILOT,
@@ -150,6 +151,7 @@ ACP_BACKENDS_ACP_RUNTIME = frozenset({ACP_BACKEND_KIRO, ACP_BACKEND_KAS, ACP_BAC
 # exists to let a caller avoid.
 ACP_BACKENDS_ACP_CLIENT_SPAWNABLE = frozenset(
     {
+        ACP_BACKEND_BEDROCK,
         ACP_BACKEND_KIRO,
         ACP_BACKEND_CLAUDE,
         ACP_BACKEND_OPENCODE,

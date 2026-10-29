@@ -24,6 +24,7 @@ from enum import Enum
 from typing import FrozenSet
 
 from kiro_crew.agent_sdk.backends import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_COPILOT,
@@ -361,6 +362,7 @@ class Routing(str, Enum):
 #: A ``.get(backend, Routing.UNVERIFIED)`` read is deliberate: an id this table
 #: does not name fails closed rather than inheriting a neighbour's mechanism.
 ACP_BACKEND_ROUTING: dict = {
+    ACP_BACKEND_BEDROCK: Routing.AGENT_SPEC,
     ACP_BACKEND_KIRO: Routing.AGENT_SPEC,
     ACP_BACKEND_KAS: Routing.AGENT_SPEC,
     # Declared, not enforced: nothing reads back whether the seeded settings took
