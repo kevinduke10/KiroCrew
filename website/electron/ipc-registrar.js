@@ -336,6 +336,45 @@ function createIpcRegistrar({
       return detectWsl();
     });
 
+    // What the main window's close button does. Deliberately narrower than
+    // `assertLocalDashboard`, which would hide the row from a main window on a
+    // configured remote host and leave that user no way to change it. The
+    // sender must be the main window's top frame, still on its assigned
+    // dashboard origin. That trusts the main window's dashboard, local or
+    // remote, with a visible, reversible two-valued preference.
+    const assertMainWindowDashboard = (event, channel) => {
+      const refuse = (why) => {
+        log(`${channel} rejected: ${why}`);
+        throw new Error(`${channel} is restricted to the main window's dashboard`);
+      };
+      const main = windows.getMainWindow();
+      if (!main || windows.windowForWebContents(event.sender) !== main) {
+        refuse("sender is not the main window");
+      }
+      if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame) {
+        refuse("sender is not the top frame");
+      }
+      let origin = "";
+      let expected = "";
+      try {
+        origin = new URL(event.senderFrame.url).origin;
+        expected = new URL(main._mcBackendUrl).origin;
+      } catch {
+        // An unreadable URL matches nothing.
+      }
+      if (!origin || origin !== expected) {
+        refuse(`sender origin ${origin || "(unreadable)"} is not the main window's dashboard`);
+      }
+    };
+    ipcMain.handle("close-action:get", async (event) => {
+      assertMainWindowDashboard(event, "close-action:get");
+      return windows.closeAction.get();
+    });
+    ipcMain.handle("close-action:set", async (event, value) => {
+      assertMainWindowDashboard(event, "close-action:set");
+      return windows.closeAction.set(value);
+    });
+
     // Open a file the chat referenced in the user's own editor, by handing its
     // path to the OS default handler on the machine in front of them.
     //
@@ -487,6 +526,28 @@ function createIpcRegistrar({
       }
     });
 
+    // First-run setup's "connect to a crew on another machine" exit. It stops the
+    // gateway this app started and reconnects the main window to a crew the
+    // user names, so it is an action on the machine in front of the user and
+    // takes the full three-gate check. The supervisor then decides from its own
+    // state whether that window may switch: the main window only, on a gateway
+    // this app spawned. The renderer supplies nothing either way.
+    //
+    // `can-...` answers a bare boolean so setup shows the link only where the
+    // switch works, and never opens the form.
+    ipcMain.handle("first-run:can-use-remote-crew", async (event) => {
+      try {
+        await assertLocalDashboard(event, "first-run:can-use-remote-crew");
+      } catch {
+        return false;
+      }
+      return gateway.canSwitchToRemoteCrew(windows.windowForWebContents(event.sender)) === true;
+    });
+    ipcMain.handle("first-run:use-remote-crew", async (event) => {
+      await assertLocalDashboard(event, "first-run:use-remote-crew");
+      return gateway.switchToRemoteCrew(windows.windowForWebContents(event.sender));
+    });
+
     // Open the user's own terminal app in a project directory. Gated like
     // `dashboard:open-file` because it is a LAUNCH on the machine in front of
     // the user, and a connection window pointed at a remote gateway shares this
@@ -625,6 +686,9 @@ function createIpcRegistrar({
         // it generates/verifies feed metadata and also supports Linux.
         autoUpdater: require("electron-updater").autoUpdater,
         isPolicyGoverned: () => policyGoverned,
+        // On Windows, 'session-end' fires on BaseWindow (not App). The feed
+        // lane uses this to register its pending-update notice on the window.
+        getMainWindow: () => windows.getMainWindow(),
         dialog: electron.dialog,
         Notification,
         getFlavor: () => "stable",

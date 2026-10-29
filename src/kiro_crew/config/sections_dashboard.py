@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import overload
 
 from kiro_crew.config.fields import _meta
+from kiro_crew.config.sections_shared_crew import SharedCrewConfig
 from kiro_crew.config.sections_tailnet import TailscaleConfig
 
 # The terminal apps the desktop shell can open in a project directory
@@ -164,6 +165,15 @@ class DashboardConfig:
         metadata=_meta(
             "Tailscale",
             "Reach the dashboard over your tailnet via `tailscale serve`.",
+        ),
+    )
+    shared_crew: SharedCrewConfig = field(
+        default_factory=SharedCrewConfig,
+        metadata=_meta(
+            "Shared Crew",
+            "Fair admission and per-person limits for a shared Crew. Not active in "
+            "this build yet: nothing reads these settings, so changing one does nothing.",
+            restart=True,
         ),
     )
     restore_sessions: bool = field(
@@ -656,7 +666,23 @@ class DashboardConfig:
                         "help": (
                             "Ceiling on concurrent terminal sessions across every chat, "
                             "server-wide. Each chat's activity bar caps its own terminals "
-                            "below this; a session beyond the ceiling is refused."
+                            "below this. At the ceiling, opening a terminal ends the shell "
+                            "that has had no browser attached the longest (at least a "
+                            "minute) and posts a notice; with none, the open is refused."
+                        ),
+                    },
+                },
+                "orphan_timeout_s": {
+                    "type": "integer",
+                    "default": 43200,
+                    "x-meta": {
+                        "label": "Detached terminal timeout (seconds)",
+                        "help": (
+                            "How long a terminal's shell keeps running with no browser "
+                            "attached, for example while your laptop sleeps, before it and "
+                            "everything running in it are ended. Default 43200 (12 hours); "
+                            "values below 60 count as 60. Run jobs that must outlive this "
+                            "inside tmux."
                         ),
                     },
                 },
@@ -832,6 +858,15 @@ class DashboardConfig:
             "graded accent stripe (0-10; 0 = off).",
         ),
     )
+    show_unread_dot: bool = field(
+        default=True,
+        metadata=_meta(
+            "Show Unread Dot on Session Cards",
+            "Show the unread dot on a sidebar session card when the agent finished "
+            "and you have not read the result. Folder and aggregate unread counts "
+            "are not affected.",
+        ),
+    )
     # Literal enum rather than FOLDER_SORT_MODES: that constant lives in
     # sections_limits with the other write/load bounds, and this field spells the
     # same list. test_config_patch.py::TestFolderSortRoundTrip::
@@ -884,6 +919,21 @@ class DashboardConfig:
             "suppresses the popup for the version it names. Validated as one "
             "atomic record by the PATCH allowlist (dashboard.update_nudge); "
             "no Settings control reads it, so it carries no schema properties.",
+        ),
+    )
+    translucent_panels: str = field(
+        default="",
+        metadata=_meta(
+            "Translucent Panels",
+            "Show the top bar, the tab bar, the message box, the suggestion chips and "
+            "the search fields as frosted glass over the content that scrolls under "
+            "them (the Liquid Glass primitive): 'on', or 'off' for solid cards. "
+            "Empty = never chosen on this workspace (the browser's own stored choice "
+            "holds, as before the setting was server-backed). Stored here like the "
+            "theme mode, not only in the browser, so the choice follows the user "
+            "across ports, browsers and the desktop app; the browser keeps a copy "
+            "only so the first paint already matches.",
+            enum=["", "on", "off"],
         ),
     )
     onboarded: bool = field(

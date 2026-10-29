@@ -229,6 +229,7 @@ repeating the Profile form is different from drawing a useful project view.
 | recent recorded events | `timeline.moments`: `time`, `type`, optional event details |
 | things waiting on the person | `waiting.items`, `count`; `approvals` |
 | helpers, tool use and spend of the live session, since it started | `subagents`, `tools`, `usage` |
+| the latest result a script cron bound to you recorded | `custom.latest.<type>.data`, `at`, `writer` |
 
 `dashboard_types` publishes paths, `row_keys`, `names_the_row` and nested row
 hints. A path ends at an array: bind the whole array and read its rows in
@@ -253,6 +254,14 @@ continuous history. `usage`, `tools`, `timeline` and `subagents` describe the
 live session only, from when it last started; spend across the project is each
 workstream's `credits`, with `credits_reported` false where nothing was measured. Lists expose omitted counts; retain that
 meaning when drawing a subset. Unreported spend differs from measured zero.
+
+`custom` is what a script cron bound to you feeds without a model turn: each
+`ctx.crew_log_append(type, data)` call lands as the latest record under
+`custom.latest.<type>`, with the script's `data`, its ISO `at` and the `writer`
+(`cron:<job id>`) the gateway stamped. Bind `custom.latest.<type>.data.<key>` for
+a cell, or the whole `data` object for a script to draw. The record is the
+script's own words: draw it as text, and show its `at` so a stale poll reads as
+stale. Only a cron bound to you can write here, and it can never name who wrote.
 
 For a project fact absent from folds, first look for its recording tool or an
 existing project artifact. An agentic field can hold a verified snapshot as a
@@ -323,8 +332,10 @@ are CSS heuristics, not measured contrast failures. Inspect the named surface
 in both schemes while preserving the intended design.
 
 A page fits from 320px through an expanded view, with wrapping or disclosure
-for dense detail. A banner has space without covering data. Links use
-`target="_blank" rel="noopener noreferrer"`. Data-driven changes stay readable
+for dense detail. A banner has space without covering data. A link to a web
+page or a dashboard path (`/chat?sid=...`) uses `target="_blank"
+rel="noopener noreferrer"`; the host opens it after the person's click.
+Data-driven changes stay readable
 while ambient layers give the page continuity. When a bound value moves or a
 new item lands, the `living-ui` skill says how that motion should feel. Skip
 the idle tour it describes for explainers: this page stays open all day.

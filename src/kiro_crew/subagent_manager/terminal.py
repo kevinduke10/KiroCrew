@@ -377,7 +377,7 @@ class TerminalCoordinator(ManagerComponent):
                 "stopped": info.user_stopped,
                 "outcome": info.outcome,
                 "task": _redact(info.task),
-                "agent": _redact(info.agent),
+                "agent": _redact(getattr(info, "run_agent", info.agent)),
                 "label": _redact(info.label),
                 # The sub-agent's own session key (see build_subagent_snapshot):
                 # lets a client fetch this node's own context-trace even after
@@ -462,6 +462,8 @@ class TerminalCoordinator(ManagerComponent):
             self._manager._teardown_cancelled_ids.discard(info.id)
             # Owed only to the parent that ended, so this skip settles it.
             info._report_delivered = True
+            return True
+        if info._left_for_next_start:  # reported by the next start's orphan sweep
             return True
         try:
             await asyncio.wait_for(self._manager._on_done(info), timeout=_ON_DONE_TIMEOUT)

@@ -408,21 +408,29 @@ X_FEATURE_SETS: dict[str, frozenset[str] | None] = {
     "ACP_BACKENDS_UNMARKED_COMPACTION_PAIR": None,
     "ACP_BACKENDS_MCP_WIRE_REINJECT": None,
     "ACP_BACKENDS_MATE_WORKER_TOOL_LIMITS": None,
+    # kiro-cli 2.35.1 / KAS 0.66.70 / codex-acp 2.2.2: each member's teardown
+    # verb is captured live, the same id answered before and 'not found' after.
+    "ACP_BACKENDS_SESSION_EVICTION": None,
+    # KAS 0.66.70: the settings channel's neverDefer flips the probe tool's
+    # toolOrigin to "client".
+    "ACP_BACKENDS_CLIENT_META_SETTINGS": None,
+    # KAS 0.66.70 spawned without --auth-method cli sends _kiro/auth/getAccessToken.
+    "ACP_BACKENDS_HOST_AUTH_CALLBACK": None,
+    # kiro-cli 2.35.1 --agent off disk; KAS 0.66.70 via customAgents: the spec's
+    # own MCP server reached the session with an EMPTY session/new array.
+    "ACP_BACKENDS_SPEC_SERVERS_OFF_WIRE": None,
+    "ACP_BACKENDS_TEMPLATE_ADDITIONS_AT_SPAWN": None,
 }
 
 # Coverage is opt-out: every ``ACP_BACKENDS_*`` set is in X_FEATURE_SETS, here, or
 # in HARNESS_EXEMPT_SETS. These are X sets with no capture yet. Shrink-only: an
 # entry missing on the base ref fails, and a removed entry must move to X_FEATURE_SETS.
 X_REGISTRATION_PENDING: dict[str, str] = {
-    "ACP_BACKENDS_CLIENT_META_SETTINGS": "kas clientCapabilities._meta.kiro.settings",
-    "ACP_BACKENDS_HOOKS_LIST": "kas _kiro/hooks/* requests",
-    "ACP_BACKENDS_HOST_AUTH_CALLBACK": "kas _kiro/auth/getAccessToken request",
+    "ACP_BACKENDS_HOOKS_LIST": "kas _kiro/hooks/* requests (KAS_CLIENT_CAPABILITIES does not announce hooks, so the engine asks none; not reachable to capture)",
     "ACP_BACKENDS_OPEN_EXTERNAL_URL": "kas _kiro/openExternalUrl request",
     "ACP_BACKENDS_STRUCTURED_REFUSAL": "kiro/kas _kiro.dev/metadata refusal notification",
     "ACP_BACKENDS_FORK_AT_MESSAGE": "claude _meta.jetbrains.air.fork.messageId fork",
     "ACP_BACKENDS_META_IDENTITY": "goose _meta tool identity channel",
-    "ACP_BACKENDS_SESSION_EVICTION": "kiro/kas _kiro terminate/delete verbs; codex session/close",
-    "ACP_BACKENDS_SPEC_SERVERS_OFF_WIRE": "kas spec over _meta; kiro-cli --agent off disk",
     "ACP_BACKENDS_HARNESS_MANAGED_COMPACTION": "kas summarization_* notifications",
     "ACP_BACKENDS_NATIVE_TODOS": "claude native /todos prompt command",
     "ACP_BACKENDS_REPORT_USAGE": "kiro _kiro.dev/metadata meteringUsage; kas _meta.kiro turn_completion",
@@ -439,6 +447,7 @@ HARNESS_EXEMPT_SETS: dict[str, str] = {
     "ACP_BACKENDS_SELF_SERVED_ACP": "routing-only: launch table membership",
     "ACP_BACKENDS_INDEPENDENT_SETUP": "off the wire: first-run install path",
     "ACP_BACKENDS_INTERNAL_SANDBOX": "off the wire: OS sandbox nesting",
+    "ACP_BACKENDS_RELAY_INTERNAL_SANDBOX": "off the wire: OS sandbox nesting on the kiro-cli relay",
     "ACP_BACKENDS_POD_HOME_REMAP": "off the wire: pod HOME relocation",
     "ACP_BACKENDS_SESSION_SHARING": "standard ACP: session/load after teardown",
     "ACP_BACKENDS_HARNESS_OWNED_SESSIONS": "standard ACP: session/load by id",
@@ -459,9 +468,11 @@ HARNESS_EXEMPT_SETS: dict[str, str] = {
     "ACP_BACKENDS_MCP_CONFIG_HOT_RELOAD": "off the wire: engine file watcher",
     "ACP_BACKENDS_MEMBER_TOOL_LIMITS": "off the wire: saved agent file field",
     "ACP_BACKENDS_USER_LEVEL_AGENT_SPECS_ONLY": "off the wire: spec resolution",
+    "ACP_BACKENDS_SPEC_FILE_GRANTS": "off the wire: whether a start on an unowned spec is refused",
     "ACP_BACKENDS_MEMBER_PANEL": "Crew-side: panel MCP tools",
     "ACP_BACKENDS_CREW_FIRES_SPEC_HOOKS": "Crew-side: Crew runs the spec hooks",
     "ACP_BACKENDS_LOCAL_CLEAR": "Crew-side: dashboard answers /clear",
+    "ACP_BACKENDS_LOCAL_HARNESS_COMMANDS": "Crew-side: dashboard answers harness commands",
     "ACP_BACKENDS_CONTEXT_RECYCLE": "Crew-side: session recycle on full context",
     "ACP_BACKENDS_MATE_WORKER_PROMPT_IN_CONTEXT": "Crew-side: worker prompt in the context block",
 }
@@ -478,6 +489,7 @@ EXPECTED_AGENT_NAMES: dict[str, frozenset[str]] = {
     "goose": frozenset({"goose"}),
     "pi": frozenset({"pi-acp"}),
     "deepseek": frozenset({"deepseek-harness-acp"}),
+    "copilot": frozenset({"Copilot"}),
 }
 
 # kiro-cli and KAS are one binary speaking one ``_kiro`` dialect, and KAS's

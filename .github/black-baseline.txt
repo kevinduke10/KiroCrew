@@ -100,7 +100,6 @@ src/kiro_crew/apps/builtins/meetings/backend/routes/tasks.py
 src/kiro_crew/apps/builtins/mochi/backend/routes.py
 src/kiro_crew/apps/builtins/ops_mission_control/backend/ledger_sync.py
 src/kiro_crew/apps/builtins/ops_mission_control/backend/notify_out.py
-src/kiro_crew/apps/builtins/ops_mission_control/tests/test_ledger_index.py
 src/kiro_crew/apps/builtins/ops_mission_control/tests/test_ledger_sync_git.py
 src/kiro_crew/apps/builtins/ops_mission_control/tests/test_notify_out.py
 src/kiro_crew/apps/builtins/ops_mission_control/tests/test_providers_datadog_cov80.py
@@ -141,7 +140,6 @@ src/kiro_crew/dashboard/chat_folder_suggest.py
 src/kiro_crew/dashboard/chat_nav.py
 src/kiro_crew/dashboard/chat_title.py
 src/kiro_crew/dashboard/file_index.py
-src/kiro_crew/dashboard/handlers/ask_question.py
 src/kiro_crew/dashboard/handlers/files.py
 src/kiro_crew/dashboard/handlers/kiro_usage_api.py
 src/kiro_crew/dashboard/handlers/sso_login.py
@@ -150,7 +148,6 @@ src/kiro_crew/dashboard/handlers/terminal.py
 src/kiro_crew/dashboard/handlers/themes.py
 src/kiro_crew/dashboard/handlers/tunnel.py
 src/kiro_crew/dashboard/handlers/webapp_preview.py
-src/kiro_crew/dashboard/handlers/weixin_qr.py
 src/kiro_crew/dashboard/loop_watchdog.py
 src/kiro_crew/dashboard/port_reclaim.py
 src/kiro_crew/dashboard/routes/skills.py
@@ -183,7 +180,6 @@ src/kiro_crew/eval/runner.py
 src/kiro_crew/eval/scenario.py
 src/kiro_crew/frontend.py
 src/kiro_crew/imaging.py
-src/kiro_crew/knowledge/agent_fetch.py
 src/kiro_crew/knowledge/agent_source.py
 src/kiro_crew/knowledge/artifact_ingest.py
 src/kiro_crew/knowledge/chunker.py
@@ -296,7 +292,6 @@ test/test_artifact_sharing_handlers.py
 test/test_artifact_source.py
 test/test_artifacts.py
 test/test_artifacts_handlers_coverage.py
-test/test_ask_question_roundtrip.py
 test/test_ask_user_question_validation.py
 test/test_auto_approve.py
 test/test_auto_research.py
@@ -545,7 +540,6 @@ test/test_learn.py
 test/test_lesson_contradiction.py
 test/test_lesson_ranking.py
 test/test_lifecycle_hooks.py
-test/test_link_dashboard.py
 test/test_local_gate.py
 test/test_manifest_hooks.py
 test/test_mark_permission_resolved.py
@@ -597,7 +591,6 @@ test/test_mochi_activity.py
 test/test_mochi_agent_policy.py
 test/test_mochi_mcp_server.py
 test/test_mochi_routes.py
-test/test_model_registry.py
 test/test_model_registry_parity.py
 test/test_module_loader.py
 test/test_native_subagent_spawn.py
@@ -614,8 +607,6 @@ test/test_omc_ledger_sync_coverage.py
 test/test_onboarding_import.py
 test/test_one_conversation_one_session.py
 test/test_open_dm_retry.py
-test/test_options_click_validation.py
-test/test_options_submit.py
 test/test_override_expiry_notice.py
 test/test_papyrus_gitops.py
 test/test_papyrus_latex.py
@@ -709,11 +700,9 @@ test/test_skill_update_flow.py
 test/test_skill_versioning.py
 test/test_slack_agent_passthrough.py
 test/test_slack_dashboard_live_sync.py
-test/test_slack_handler_coverage_branches.py
 test/test_slack_home_tab.py
 test/test_slack_linked_approval.py
 test/test_slack_mirror_unlink.py
-test/test_slack_options_lifecycle.py
 test/test_slack_pins_reactions.py
 test/test_slack_render_pipeline.py
 test/test_slack_scope_probe.py

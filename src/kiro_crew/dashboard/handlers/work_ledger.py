@@ -90,12 +90,15 @@ if TYPE_CHECKING:  # every owner-defined name in _EXPORTS, for type checkers and
         reaches_a_channel,
     )
     from kiro_crew.dashboard.handlers.work_ledger_conductor import (  # noqa: F401
+        DISPATCH_FIELD,
         RECORD_ACTIONS,
         _bootstrap,
         _close_warning,
+        _count_crew_mode_run,
         _count_recorded,
         _ensure,
         _record_conductor_write,
+        _refuse_dispatch_without_ledger,
         _refuse_dispatched_worker,
         _refuse_unowned_worker,
         _worker_slot,
@@ -176,9 +179,17 @@ if TYPE_CHECKING:  # every owner-defined name in _EXPORTS, for type checkers and
     from kiro_crew.dashboard.handlers.work_ledger_worker import (  # noqa: F401
         _CODE_DONE_WITHOUT_EVIDENCE,
         _WORKER_REPORT_FIELDS,
+        STEER_CREW_LOG_OFF,
+        STEER_ITEM_CLOSED,
+        STEER_ITEM_TOO_LARGE,
+        STEER_NO_ITEM,
+        STEER_NO_UNIT,
+        STEER_NOT_RECORDED,
         _report,
+        _steer_unit,
         api_work_brief,
         api_work_report,
+        record_person_steer_result,
     )
 if TYPE_CHECKING:  # names it serves from outside the family, from their homes
     from kiro_crew import (  # noqa: F401
@@ -186,6 +197,7 @@ if TYPE_CHECKING:  # names it serves from outside the family, from their homes
         ledger_wake,
         session_ledger,
         work_ledger,
+        work_preview,
     )
     from kiro_crew.constants import (  # noqa: F401
         env_file_display,
@@ -223,6 +235,7 @@ if TYPE_CHECKING:  # names it serves from outside the family, from their homes
     from kiro_crew.validation import (  # noqa: F401
         WORK_LEDGER_READ_SCHEMA,
         WORK_LEDGER_RECORD_SCHEMA,
+        WORK_REPORT_REMOTE_DISPATCH_SCHEMA,
         WORK_REPORT_SCHEMA,
         ValidationError,
         validate_tool_args,

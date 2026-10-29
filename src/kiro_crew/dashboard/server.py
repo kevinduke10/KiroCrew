@@ -39,6 +39,7 @@ from kiro_crew.autonudge import get_instance as _autonudge_get  # noqa: F401
 from kiro_crew.autonudge_authz import authorize_and_add_nudge  # noqa: F401
 from kiro_crew.browser_cli import launch as browser_cli_launch
 from kiro_crew.browser_cli import launcher as browser_cli_launcher  # noqa: F401
+from kiro_crew.browser_cli import managed_launcher as browser_cli_managed_launcher  # noqa: F401
 from kiro_crew.browser_cli import snapshots as browser_cli_snapshots
 from kiro_crew.browser_cli import token as browser_cli_token
 from kiro_crew.browser_cli import view as browser_cli_view  # noqa: F401
@@ -68,6 +69,7 @@ from kiro_crew.dashboard import (  # noqa: F401
     tailnet,
     tailnet_serve,
 )
+from kiro_crew.dashboard.approval_posture import trust_carries  # noqa: F401
 from kiro_crew.dashboard.chat_utils import (  # noqa: F401
     effective_session_key,
     wire_session_subagent_probe,
@@ -142,6 +144,12 @@ from kiro_crew.dashboard.handlers.source_providers import (  # noqa: F401
 from kiro_crew.dashboard.handlers.spawn_resume import setup_spawn_resume_routes  # noqa: F401
 from kiro_crew.dashboard.handlers.weixin_qr import setup_weixin_routes
 from kiro_crew.dashboard.handlers.whatsapp_setup import setup_whatsapp_routes
+from kiro_crew.dashboard.kiro_relay.caller import published_relay_caller  # noqa: F401
+from kiro_crew.dashboard.kiro_relay.ingress import (  # noqa: F401
+    RELAY_INGRESS_APP_KEY,
+    RelayIngress,
+    relay_ingress_middleware,
+)
 from kiro_crew.dashboard.listener_guard import (  # noqa: F401
     LISTENER_LOST_EXIT_CODE,
     ListenerGuard,
@@ -169,6 +177,7 @@ from kiro_crew.dashboard.port_reclaim import (  # noqa: F401
     RECLAIMED,
     reclaim_stale_gateway_port,
 )
+from kiro_crew.dashboard.relay_headers import relay_header_strip_middleware  # noqa: F401
 from kiro_crew.dashboard.routes import register_all
 from kiro_crew.dashboard.server_internal_paths import (  # noqa: F401
     _CSRF_SAFE_METHODS,
@@ -306,6 +315,8 @@ from kiro_crew.dashboard.server_runtime.maintenance import (  # noqa: F401
     _kick_pinned_order_load,
     _kick_session_search_index,
     _own_host_warm_done,
+    _prebuild_memory_after_preparation,
+    _prebuild_memory_in_thread,
     _register_connections_warm_lifecycle,
     _register_own_host_warm,
 )
@@ -777,6 +788,9 @@ async def start_dashboard(
     # Crew-log class record for a binding that just COMMITTED, taken before anything
     # can be routed through it
     state.wire_session_bind_listener()
+    # Lands a waiting model pick when a channel or cron turn ends, a boundary
+    # no dashboard turn passes
+    state.wire_session_release_listener()
 
     app = web.Application(
         client_max_size=60 * 1024 * 1024
@@ -866,6 +880,9 @@ async def start_dashboard(
     await asyncio.to_thread(state.load_cron_folders)
     # Off-loop: a large chat_pins.json must not block the event loop at startup.
     await asyncio.to_thread(state.load_chat_pins)
+    # chat_reactions.json is loaded lazily on the first reaction request
+    # (state.ensure_chat_reactions_loaded), not here: a stored-data-sized parse
+    # must not run on the gateway boot path before the site starts listening.
     # Off-loop: load_tags runs a synchronous save_tags() during load (status
     # back-fill / seed) which fsyncs on the event loop; a large tags.json —
     # including preserved-but-malformed rows — must not stall startup.
@@ -1048,6 +1065,11 @@ async def start_dashboard(
         # with, for handlers the middleware bypasses (POST /api/auth/refresh must
         # re-bind a rotated access token to the same verified peer identity).
         app["tailnet_trust"] = _tailnet_trust
+        # The relay client's door into this app (dashboard/kiro_relay). Built off:
+        # the relay client, and the setting that turns this on, arrive together in a
+        # later change. Off, the ingress middleware hands every request on to the
+        # client-sent relay-header strip.
+        app[RELAY_INGRESS_APP_KEY] = RelayIngress(enabled=False)
         app["allowed_origins"] = build_allowed_origins(
             port, local_only, configured_host, tailnet_host=_tailnet_host
         )
@@ -1476,6 +1498,16 @@ async def start_dashboard(
         logger.warning("mate-owned-config migration failed", exc_info=True)
 
     await _restore_dashboard_sessions(state, cfg)
+
+    # Crew Mode's start pass (learn closed roots, move roots onto a conductor an
+    # update changed) and its retry of busy roots, now that the restore has rebuilt
+    # the slot set it reads. The dashboard alone starts it: a headless gateway
+    # restores no slots, so it would have nothing to move and a name to misrecord.
+    from kiro_crew.dashboard import crew_mode_migration
+
+    _crew_task = asyncio.create_task(crew_mode_migration.run(state))
+    state._background_tasks.add(_crew_task)
+    _crew_task.add_done_callback(state._background_tasks.discard)
 
     # A crewmate the migration above moved tells its user once, in its own
     # thread; a thread not open yet is offered it at its next turn end.

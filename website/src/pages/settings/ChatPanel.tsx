@@ -487,12 +487,19 @@ export function ChatPanel({ basePath }: { basePath?: string } = {}) {
             </div>
           )}
           <FollowDefaultModelAction />
+          {/* Selectable Models: label prefers the backend's native name
+              (e.g. Opus 5.5 for the id opus) when it sent one, with the id
+              beside it as a monospace hint so the row matches the Default
+              Model select and the config file; without a name the label is
+              the id. value stays the id -- it is the wire value a toggle
+              hides/shows. */}
           <SettingsMultiSelect
             label={i18nT('pages.settings.chatPanel.selectable_models')}
             hint={i18nT('pages.settings.chatPanel.selectable_models_description')}
             options={availableModels.map(model => ({
               value: model.name,
-              label: model.name,
+              label: model.displayName ?? model.name,
+              hint: model.displayName && model.displayName !== model.name ? model.name : undefined,
               description: model.name === 'auto'
                 ? i18nT('pages.settings.chatPanel.auto_always_visible')
                 : model.description,
@@ -915,6 +922,7 @@ export function ChatPanel({ basePath }: { basePath?: string } = {}) {
               Default off: the gesture takes the double-click that otherwise
               selects a word in the bubble (#7908). */}
           <SettingsToggle label={i18nT('pages.settings.chatPanel.double_click_to_edit')} hint={i18nT('pages.settings.chatPanel.double_click_to_edit_desc')} checked={chatCfg.doubleClickToEdit} onChange={v => setChat('doubleClickToEdit', v)} />
+          <SettingsToggle label={i18nT('pages.settings.chatPanel.scroll_on_send')} hint={i18nT('pages.settings.chatPanel.scroll_on_send_desc')} checked={chatCfg.scrollOnSend} onChange={v => setChat('scrollOnSend', v)} />
           {/* This device only (its own key, not the backed-up chat config): it
               acts on this browser's clipboard. Default off, since it
               overwrites the clipboard on every drag. */}

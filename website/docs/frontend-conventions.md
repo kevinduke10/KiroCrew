@@ -321,8 +321,8 @@ navigation rail apart from a filter pill, and the System page stacks both.
 ### The About, Chat and MCP settings panels
 
 `pages/settings/AboutPanel.tsx` (Settings ▸ About), `pages/settings/ChatPanel.tsx`
-(Settings ▸ Chat) and `pages/settings/McpManagement.tsx` (the Developer page's MCP
-pool) are facades over sibling owners in `pages/settings/`. Each facade keeps its
+(Settings ▸ Chat) and `pages/settings/McpManagement.tsx` (Settings ▸ Developer ▸
+MCP Management) are facades over sibling owners in `pages/settings/`. Each facade keeps its
 module id and every export, so hosts and the specs that mock a panel keep naming the
 facade. Nothing outside a panel's own files imports one of its owners, and no owner
 imports its facade; the only edges between owners are `AboutPanelGatewayUpdate.tsx` to
@@ -342,9 +342,9 @@ fixed order.
 | `useChatPanelDashboard.ts` | the `dashboardConfig` read and writes, Feature Tips and the feature-video readout |
 | `useChatPanelTypedFields.ts` | the draft-backed number and path fields (Advanced, Sessions) |
 | `useChatPanelModels.ts` | the Model page: fallback models, defaults, selectable models, the agent-pin notice, per-role rows |
-| `McpManagement.tsx` | the page: the view tabs, the sharing and pre-resolve cards, the servers table, both dialogs |
+| `McpManagement.tsx` | the page: the view tabs, the sharing and pre-resolve cards, the servers table, the Share all list |
 | `mcpManagementModel.ts` | wire types, error-key tables, the row-state derivation and the sharing-evidence verdict |
-| `McpManagementLaunchReview.tsx` | the launch lines, the review a STUB switch opens, the refused-row panel |
+| `McpManagementLaunchReview.tsx` | a row's share button, its Details (the agents that declare it), and its hint |
 | `McpManagementAssessment.tsx` | the Sharing assessment view and its Measure control |
 
 New work for a responsibility in the table goes to its owner, and work that belongs

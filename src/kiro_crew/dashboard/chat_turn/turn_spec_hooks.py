@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from kiro_crew.dashboard.chat_turn.recipient import (
         _cross_surface_reply_text,
         _deliver_cross_surface_reply,
+        _retire_mirror_thinking,
         cross_surface_withheld,
         slack_publication_withheld,
     )
@@ -242,11 +243,12 @@ async def _notice_spec_hooks_run_nowhere(
 
 def _notice_steer_upgrade(state: "DashboardState", slot: "_ChatSlot", client: Any) -> None:
     """One notice row on a new session whose adapter is too old to take a mid-turn
-    message: the chat runs, the message waits for the turn, and the row names the
-    installed version, the minimum and the upgrade command."""
-    notice = getattr(client, "steer_upgrade_notice", "")
-    if isinstance(notice, str) and notice:
-        append_and_surface(state, slot, "notice", _redact_display_text(notice), "msg msg-info")
+    message, and one whose KAS drops its agent's prompt: the chat runs, and each row
+    names the installed version, the minimum and the upgrade command."""
+    for name in ("steer_upgrade_notice", "agent_prompt_upgrade_notice"):
+        notice = getattr(client, name, "")
+        if isinstance(notice, str) and notice:
+            append_and_surface(state, slot, "notice", _redact_display_text(notice), "msg msg-info")
 
 
 #: Notice text per ``settings_withheld_cause`` answer (see ``LLMProvider``).
@@ -742,6 +744,11 @@ async def _turn_stop_hook(turn: _ChatTurn) -> None:
                 if not _these_options:
                     break
 
+            # The answer starts here, so the "Thinking…" placeholder (still
+            # up on a turn that ran no tool) goes before the answer lands.
+            turn._mirror_thinking_ts = await _retire_mirror_thinking(
+                state.slack_client, _mirror_chan, turn._mirror_thinking_ts
+            )
             for _part in render_for_slack(_mirror_body):
                 await state.slack_client.post_message(_mirror_chan, _part, _mirror_thread)
             if _mirror_options:

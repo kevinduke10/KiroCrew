@@ -119,6 +119,7 @@ class AcpRuntime:
     # What a session start is built from: ``kiro_crew.acp.runtime_session_setup``.
     _session_work_dir = _rt_setup._session_work_dir
     _refuse_if_loader_unreachable = _rt_setup._refuse_if_loader_unreachable
+    _refuse_over_ceiling_start = _rt_setup._refuse_over_ceiling_start
     _kas_custom_agents = _rt_setup._kas_custom_agents
     _mount_member_panel = _rt_setup._mount_member_panel
     _session_start_budget = _rt_setup._session_start_budget
@@ -484,6 +485,11 @@ class AcpRuntime:
         # never outlives the init scope whose progress it describes (see
         # _stage_init_frame).
         self._session_inits_in_flight = 0
+        # Per session id whose ``session/load`` is in flight with
+        # ``require_replay``: how many replayed-turn frames the engine sent
+        # before answering. The reader loop counts them; load_session reads the
+        # count to tell a restored conversation from a freshly created record.
+        self._load_replay_frames: dict[str, int] = {}
         self._pending_init_notifications: deque[JsonRpcMessage] = deque(
             maxlen=_INIT_NOTIFICATION_BUFFER_LIMIT
         )
@@ -505,6 +511,10 @@ class AcpRuntime:
         # that advertises nothing -- which the harness must read as "nothing is
         # known", never as "nothing is supported".
         self._agent_capabilities: dict = {}
+        # The whole ``initialize`` result. Top-level ``_meta`` (where the
+        # ``_session/steering`` advertisement lives) is outside
+        # ``agentCapabilities``, and the session card reads the same object.
+        self._initialize_result: dict = {}
         # agentInfo.version from the initialize response: the version of the
         # binary THIS process is executing, which can differ from the one on
         # disk after an in-place upgrade. Empty until the handshake completes.
@@ -826,6 +836,11 @@ class AcpRuntime:
         spawned before it.
         """
         return self._agent_version
+
+    @property
+    def initialize_result(self) -> dict:
+        """The agent's ``initialize`` result (``{}`` until the handshake)."""
+        return self._initialize_result
 
     @property
     def stdin_stall_death(self) -> bool:

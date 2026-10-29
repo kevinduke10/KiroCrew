@@ -306,6 +306,19 @@ record the SDK default and the crew window draw nothing, while ChatPage passes
 the row to its `renderUnparsedFile` option, which the single-chat page fills
 with its conversational bubble so the raw text stays visible.
 
+For a raster image (`image/*` other than `image/svg+xml`), `FileCard` draws the
+preview as a button that opens the shared image viewer (`dispatchLightbox`) at
+that image; Save stays in the header. The preview's `<img>` carries
+`data-lightbox-turn`, as a reply's markdown image does, and the transcript's
+per-display-item wrapper carries `data-image-turn`, so the viewer pages through
+a turn's markdown images and file-card images as one set in transcript order
+(the single-chat page's `ChatTranscriptView` wrappers carry it too). Images in
+a folded working-step row (`inert` or `data-collapsed="true"`) stay out of the
+set.
+`data-lightbox-filename` gives the viewer's Download the file's own name. A
+surface without the wrapper keeps each message's own set. A preview that fails
+to load becomes an inline `ErrorNotice` and is no longer a control.
+
 ## Host-mediated chat launch and cron toggles
 
 `useChatLauncher().openChat` accepts `slotKey` and `autoSend`. Without a target,
@@ -413,7 +426,7 @@ turn's armed time would let a double-tap inside the window force-stop it. A soft
 with a message queued is why: the queue drain hands the floor straight to the
 next turn, so a 1-second poll can read the successor without ever seeing
 `running: false` or a stop phase, and the new, unpressed turn would otherwise
-show "Stopping" and spend its first press as a force kill. A read without the
+show "Stopping" and spend its first press as a force stop. A read without the
 pair (the admission-only reservation before a turn is numbered) neither changes
 the turn nor forgets the last one, so a press made during admission survives the
 numbering of the turn it was aimed at; a new `turn_gen` with the same `turn`
@@ -432,7 +445,7 @@ history) apart from what is dropped (work in progress and queued messages), the
 same loss the force-stop hint names. When a press fails while the warning
 shows, the failure reads `appSdk.chatEmbed.stop_did_not_go_through`, without the
 generic "press Stop again", so one instruction remains. The header and the
-footer carry "Stopping…"/"Killing…"; the placeholder stays neutral. The next press is debounced
+footer carry "Stopping…"/"Force stopping…"; the placeholder stays neutral. The next press is debounced
 against the declined one and sent as a plain stop: the backend's marker is what
 makes it the hard kill while the compaction lasts, and once the compaction has
 ended the backend drops the marker and the same press is an ordinary soft stop.
@@ -455,11 +468,108 @@ not withdrawn when the poll reports the marker gone, because a poll issued
 before the decline can answer after it; so if the compaction ends inside the
 window the embed keeps warning of a reset that the next press will not perform
 (an over-warning, never a silent reset).
+
+A refused press shows one plain sentence, chosen by `stopRefusalCopy` in
+`useStopPress.ts` from the transport's `StopRefusal`, checked in this order
+(#20398, #24940):
+
+| Reason | Read from | Message (`components.chatPane.*`) | Detail line |
+|---|---|---|---|
+| proxy sign-in | `edgeChallenge` | the proxy's own remedy text (`r.error`) | none |
+| signed out | `authRequired` | `stop_failed_signed_out`: "You're signed out, so nothing was stopped. Sign in again, then press Stop." | none |
+| not found | `code: slot_not_found` or HTTP 404 | `stop_failed_not_found`: "This chat wasn't found, so nothing was stopped. Reload the page." | none |
+| server error | HTTP 5xx | `stop_failed_server`: "The server hit a problem and couldn't stop this turn. Press Stop again." | backend text |
+| other | anything else | `stop_failed`: "Couldn't stop this turn. Press Stop again." | backend text |
+
+A press with no answer is not a refusal: it reads `stop_failed_network`
+("Couldn't reach the server to stop this turn. Press Stop again."). The proxy
+sign-in row applies only in the dashboard pane. The embed's scoped API
+(`ScopedApiError` in `website/src/app-sdk/scopedApi.ts`) never sets
+`edgeChallenge`, and it sets `authRequired` only for the gateway's own 403 with
+`X-Auth-Required: true`. So a proxy sign-in page answering the embed shows the
+generic `stop_failed` message, with the raw `API <status>: <body>` text as its
+detail.
 Writers: `website/src/chat-core/stop/useStopPress.ts`, `website/src/app-sdk/embedStopTransport.ts`,
 `website/src/app-sdk/ChatEmbed.tsx`, `website/src/components/useChatPaneTurnControl.ts`,
 `src/kiro_crew/dashboard/chat_api/slot_detail.py` (`stop_declined`).
 Tests: `website/src/test/useStopPress.test.ts`, `website/src/test/ChatEmbed.stop.test.tsx`,
 `website/src/test/ChatPane.stopEscalation.test.tsx`, `test/test_slot_detail_stop_state.py`.
+
+## ChatEmbed live updates
+
+`ChatEmbed` re-reads its slot when the host signals a change instead of waiting
+for its next poll. The seam is the optional `slotPush` on the SDK context
+(`app-sdk/slotPush.ts`): `watch(slotKey, {onChange, onConnection})` plus
+`connected(slotKey)`. The signal is content-free: no rows, no text, no slot metadata.
+Every row the embed renders still comes from its scoped since-cursor read
+(`embedIncrementalRead`, history.md), so the app's declared `permissions.api`
+and the gateway's slot-ownership check on `GET /api/chat/slots/{slot}` keep
+deciding what an app sees. That is also why the embed does not fold `chat_*`
+frames itself: doing so would need a store-free copy of the chat frame reducer
+and would put frame payloads into app code. The session list's `mc:app:slots`
+ping (`hooks/websocket/slotList.ts`) is the same shape.
+
+The dashboard's provider (`utils/appSlotPush.ts`) is fed every frame
+the dashboard socket decodes and the connectivity flag from
+`markGatewayConnected`/`markGatewayDisconnected`. That socket is the dashboard
+user's and carries every slot, so the provider is the permission boundary. It
+signals an app only for a slot whose `ChatSlot.app` is that app, read again at
+each delivery, and only for frames that change what the slot read returns
+(`SLOT_CHANGE_FRAMES`), `slot_title` included because the embed header shows
+the read's `title`. `slot_title` names its slot in `key`, not `slot`, and the
+provider reads it from there (`KEY_SLOT_FRAMES`) exactly as the gateway gate
+does. That is the set §13 admits to an app token with no
+`slots:*` declaration, so this path grants no event an app token could not
+already receive. Widening it to `slots:user`/`slots:all` slots would mean
+mirroring the gate on the client, `exposeToApps` included; that is not done.
+A slot the app does not own (the generic `POST /api/chat` creates one), or one
+not yet in the slot list, is not signalled, and `connected(slotKey)` and
+`onConnection` report it as not live even while the socket is up, so its embed
+keeps the full 1 s / 5 s cadence rather than the backstop. The embed reads
+`connected(slotKey)` again at each poll tick, so a slot that changes hands,
+or one that enters the slot list after the embed mounted, moves cadence on the
+next tick with no reconnect. `test/test_app_slot_push_frames.py`
+pins that each frame in the set is slot-scoped, outside the subagent family,
+and admitted by the gateway for an own slot only. It also pins the reverse:
+every other slot-scoped frame is named in `_READ_UNCHANGED` with why it leaves
+the read as it was, so a new slot-scoped frame fails until it is placed.
+
+Reads: a signal reads at once. Signals during an in-flight read collapse into
+one trailing read, at least 250 ms after the previous one, and the read joins
+an in-flight request rather than aborting it (`cancelRefetch: false`), so a
+fast stream cannot cancel every read. A signal that joins a poll read already
+in flight still gets one trailing read, because that request was sent before
+the change. The cost: while a reply streams, one
+embed reads its slot up to four times a second where the poll alone reads once;
+each is the since-cursor delta, so it carries only the rows after the held
+cursor. Idle, the backstop reads once per 15 s where the poll alone reads once per 5 s.
+The 250 ms gap is the price of showing a reply as it is written. Each `onConnection(true)`, reconnects
+included, reads once, because a change made while the socket was down was
+never signalled. An embed that mounts onto a channel already live for its slot,
+with a cached page and no read under way, reads once too: frames that came while
+it was unmounted refreshed nothing. While the page is hidden (React Query's
+`focusManager`) or the host tab is inactive (`info.active === false`), no push
+read is sent: signals, connects and the attach read only mark one read pending,
+and it is sent once both are visible again. The poll is not gated by the host
+flag: it pauses while the page is hidden (React Query's own rule) and keeps its
+cadence in an inactive host tab, as it does with no channel.
+While the channel is live for this slot and the read is healthy the poll is a
+backstop (5 s running, 15 s idle). A failing read ignores the channel and keeps
+the no-push cadence (1 s / 5 s, then the outage-length back-off), so the
+stalled notice still appears 10 s into an outage: the channel being up says
+nothing about whether the read works (a deleted session, lost access).
+While the read is failing no push read is sent at all: change signals and
+connects are dropped rather than held, so a stream of frames cannot hit a
+failing endpoint every 250 ms, and the poll's next good read carries the change.
+
+Hosts that pass it: `AppHost`, `SpecBuilderPage`. Others (`IncidentChat`,
+whose slot is unowned; session controls; the vendored iframe SDK) pass none
+and poll.
+Writers: `website/src/app-sdk/slotPush.ts`, `website/src/app-sdk/ChatEmbed.tsx`,
+`website/src/utils/appSlotPush.ts`, `website/src/hooks/useWebSocket.ts`,
+`website/src/hooks/websocket/gatewayConnectivity.ts`.
+Tests: `website/src/test/ChatEmbed.pushRead.test.tsx`,
+`website/src/test/appSlotPush.test.ts`, `test/test_app_slot_push_frames.py`.
 
 ## App Store source selection
 
@@ -642,6 +752,19 @@ fetches. The registry-refresh sweep expires each row's marker alongside its
 manifest file, so an explicit refresh always retries, and the marker lives in
 `by-source/`, so the GC sweep reclaims it. A missing, expired or unreadable
 marker reads as absent and the listing fetches.
+
+An installed app's own `app.json` is cached apart. When `_fetch_app_manifest`
+answers from the installed checkout (it reports that through its `provenance`
+argument), `_resolve_manifest` writes the answer to
+`<stem>-<digest>.installed.json` (`_installed_manifest_cache_path`), not to the
+source's manifest file. That copy names the INSTALLED version, while the source
+file is what the listing's `version`, `update_status` and the owner-tier
+prewarm's warm check read as what the branch publishes; stored there, an
+installed app read as current for the cache's life and the prewarm never renewed
+it. The listing reads the source file first and the installed copy second, the
+prewarm clones rows that have an installed copy ahead of every other row, and the
+registry-refresh sweep expires the installed copy with the others, so a Sync
+shows after the next refresh.
 
 The client
 (`isVerified`/`sourceLabel` in `website/src/components/appstore/types.ts`)
@@ -1107,7 +1230,10 @@ for all of them, as `src/kiro_crew/docs/agent-spec-fields.md` (Resources)
 documents. The catalog lists each skill once, under whichever link its walk reached
 first; `_alias_selected` in `skill_runtime/catalog.py` still selects a row listed
 under its flat link when the namespaced link one level under the mapping's literal
-prefix resolves to the same target. Each link is a
+prefix resolves to the same target. The exact read served while the catalog is
+`building` (`skill_runtime/search.py`) and the dashboard's "used by" annotation
+(`_shared_skill_listing.py`) apply the same rule through `_alias_matches`, for a
+path inside the skills roots only. Each link is a
 symlink on POSIX and a **directory junction** on Windows, via
 `platform_compat.symlink_or_junction`.
 
@@ -2296,6 +2422,37 @@ this checkpoint. It applies whether or not a handler carries a check of its own.
   after the body upload, and so does `/api/chat/mode`.
 - `POST .../resume` is `HANDLER`, because it opens a persisted transcript that
   usually has no live slot (see below).
+
+The question routes (`GET .../question`, `POST .../question/answer`,
+`POST .../question/steer`, `POST .../question/dismiss`)
+deliberately take the `OWNER` default rather than
+`SESSION_GRANT`: the grant never reaches a question in a person's own session.
+Their handlers still require `sessionApproval` from the owner app, through
+`deny_session_approval_caller`, as `/approve` does.
+
+`.../question/steer` and `.../question/dismiss` are the native mid-turn card's
+pair, alongside `.../question/answer` for the blocking card. A native card
+(`native: true`, a `card_id`, no `ask_id`) is raised while its own turn is still
+running and waiting on the answer, so a queued send would sit behind that turn
+and never reach it. `/steer` instead injects the chosen or typed answer INTO the
+running turn (`steer_into_running_turn` with `user_origin=False`), carrying the
+app's own provenance: the row records the app actor (`turnActor='app'`) and its
+display label (`appLabel`), and the human-turn marker stays off. The actor is
+keyed on the authenticated app caller, not on the display label surviving its
+length/control-char bound, so a malformed-label app still routes as an app turn
+rather than a `user` turn eligible for the user-only routing gate. The handler
+reserves the `card_id` synchronously before delivery (on the slot's own in-flight
+set, never on the card record, so a claim never serializes out) and refuses a
+concurrent second submission with `409`. On delivery the card is retired, so a
+second `/steer` of the same `card_id` is a `404`: one steer per card, not an open
+channel. A native answer that must be requeued (the turn ended as it arrived)
+drains with commands OFF — the app user's own text, which may literally be
+`/clear`, is sent as the words, never run as a dashboard command, the same
+treatment a channel steer's requeue gets. When no turn is running `/steer`
+reports `unavailable` so the embed hands the answer back to the message box
+rather than dropping it. `/dismiss` retires a native card's `needs_input` status
+without answering — the per-slot, owner-app form of the owner-only
+`/api/ask-question/dismiss`.
 
 The middleware publishes the slot object it judged on the request
 (`CHECKPOINT_SLOT_KEY`). A handler that awaits before it looks its slot up
@@ -3516,11 +3673,24 @@ are `_health_check_loop` (bounded startup poll) and `_watch_backend_health`
   stop and every explicit external start advances a per-app lifecycle generation; the
   spawn does not. The restart snapshots that generation when it removes the dead record:
   a later STOP tears down its exact replacement, while a later START adopts/reuses the
-  replacement and supersedes the stale stop. PID-file cleanup is likewise conditional on
-  the exited process's exact `(pid, start_time)` identity, so it cannot erase a successor
-  recorded under the same app name. A failed spawn and a spawn that raises follow the
-  same restore/backoff path. An exit during the startup health gate continues the same
-  retry budget rather than stranding the enabled app.
+  replacement and supersedes the stale stop. The dead record is not simply removed: it
+  is swapped for a restart-owned STARTING reservation (port 0, no process) that stays
+  in place across the PID-file forget, the dead root's tree drain and the activation
+  re-vet, and is removed (identity-checked, in a `finally`) just before the
+  replacement spawn or the denial return. The app's lifecycle flock is taken before
+  the re-check that publishes the reservation, in the spawn path's lock order, and
+  held through the re-vet; it is released before the spawn, which takes it itself. A
+  concurrent start during that span therefore waits on the reservation like any
+  in-flight spawn instead of reading an absent record as free and, on a fixed port,
+  adopting the forked server the drain is about to end; a start that follows a stop
+  in that span cannot spawn until the flock is released, and a waiter whose window
+  runs out finds the flock held and leaves the reservation alone. A stop during the
+  drain removes the reservation and records STOP as usual. Failing to take the flock
+  counts as a failed attempt and is retried on the same cadence. PID-file cleanup is
+  likewise conditional on the exited process's exact `(pid, start_time)` identity, so
+  it cannot erase a successor recorded under the same app name. A failed spawn and a
+  spawn that raises follow the same restore/backoff path. An exit during the startup
+  health gate continues the same retry budget rather than stranding the enabled app.
 - **An HTTP failure from a live process is not decisive.** A backend can be
   briefly busy, so demotion needs `_HEALTH_WATCH_FAILURES` consecutive misses;
   demoting on a single miss would let one slow response take a working app
@@ -3909,7 +4079,7 @@ change lands in its owner.
 | Module under `src/kiro_crew/apps/` | Owns |
 |---|---|
 | `registry.py` | The facade: the only import path and patch surface, plus the build step (`_run_app_build`) and the two index-entry name gates (`_admit_cached_index_entries`, `_admit_fetched_index_entries`) |
-| `registry_pipeline/subprocess_env.py` | The environments registry children start with: `minimal_env`, the credential-free `anonymous_git_env`, and the `detectInstalled` probe env |
+| `registry_pipeline/subprocess_env.py` | The environments registry children start with: `minimal_env`, the credential-free `anonymous_git_env`, the `detectInstalled` probe env, and `_git_network_env`, which adds the operator's proxy and CA-bundle variables (`_GIT_NETWORK_ENV_KEYS`) to the git clone/fetch/pull spawn only, never to an install, build or app child, because a proxy URL can carry credentials. A fetch, pull or clone that cannot reach the remote appends the fixed `_GIT_NETWORK_FAILURE_HINT` (`git_targets.py`), which names the variables and never their values |
 | `registry_pipeline/git_targets.py` | Clone-target text: the target an entry names, host and SSH parsing, the unsupported query, fragment and ambiguous SSH/SCP forms, userinfo stripping, normalization and comparison, the one-shot credential environment, and the fixed classes credentialed git output is reduced to |
 | `registry_pipeline/caches.py` | Everything under `cache/app-manifests`: manifest-cache and index-cache identity, paths, TTLs, reads and writes, expiry, garbage collection, and the legacy-filename migration |
 | `registry_pipeline/sources.py` | Which registries are in force: the bundled seed and edition rows, pinned and effective registries, identity keys, trust tiers, clone-host trust and sandbox mode, and the owner-designated same-repo carve-out with its SEL records |
@@ -4021,17 +4191,18 @@ names `apps/backend.py::_start_app_backend_body`, `test_spawn_audit.py` names
 `test_app_backend_spawn_env.py` read the spawn's record constructions and environment in the
 facade's source -- including what must NOT be there, so every record construction and
 none of the texts they forbid lives in an owner either. `_pid_alive` stays there because `test_windows_kill_probe_audit.py`
-reads it by path. Four owner call sites reach those residents at call time through
+reads it by path. Five owner call sites reach those residents at call time through
 `backend_runtime._facade()`, and nothing else refers to the facade:
 `termination._drain_exited_root_tree` and `stale_reap._reap_stale_app_backends`
-(`_pid_alive`), `restart._restart_exited_backend` (`_start_app_backend`), and
+(`_pid_alive`), `restart._restart_exited_backend` (`_start_app_backend`, and
+`_starting_reservation` for the STARTING record it holds across the drain), and
 `startup._start_backends_concurrently` (`start_app_backend`). The provisioning
 transaction's link-screen sites (`test/link_screen_sites.py`), its internal-Python
 spawn row (`test_internal_python_isolation.py`) and its `NON_EGRESS_REDACTION_MODULES`
 row name `apps/backend_runtime/provisioning.py`, whose pip stderr scrub is the
 backend's only redactor call. `test_app_backend_composition_contract.py` pins the
 surface, the one-namespace writes, the reach of every global a backend function reads,
-the import order, the four facade call sites and the reload end to end,
+the import order, the five facade call sites and the reload end to end,
 `test_app_backend_composition_contract_patch_spellings.py` pins the `create=True`
 guard, and `test_app_backend_refactor_characterization.py` pins the generation,
 ordering and identity guards that cross owners.
@@ -4187,12 +4358,17 @@ the issue time. The wire format and the verifier's steps are in
    `is_dashboard_user` to true also sets `auth_from_query_token` from the
    credential it validated, including the two internal-path branches that serve
    mixed internal routes such as `/apps/design-tweak/api/thread`. So the owner's
-   cookie reads as `owner-session` on those routes too.
+   cookie reads as `owner-session` on those routes too, and so does the owner of
+   a personal Crew reaching it through the Kiro relay, whom token auth admits as
+   the owner ([dashboard-token-auth § Relay-delivered requests](dashboard-token-auth.md#relay-delivered-requests)).
+   A relayed teammate's subject never matches the owner predicate, and the whole
+   app surface (`/apps/*` and `/api/apps` with everything under it) is off for
+   teammates.
 4. `none` for every other request.
 
 The proxy strips any caller-sent `X-KiroCrew-Proxy` and `X-KiroCrew-Principal`
 for every app, opted in or not, so a backend sees only the gateway's values. An
-app that does not opt in receives exactly the headers it received before. A
+app that does not opt in receives no principal header. A
 signer refusal returns 502 `proxy_principal_sign_failed` rather than forwarding
 an opted-in request without its claim.
 
@@ -4207,9 +4383,88 @@ that stays the backend's own check.
 The flag is part of the manifest's `backend` dict, so an admission signature
 covers it. Only the JSON boolean `true` turns it on.
 
+### 24a. Every proxied request carries a replay-proof v2 signature
+
+The v1 `X-KiroCrew-Proxy` value, `<ts>:<hmac>` over
+`<ts>:<method>:<raw target>:<sha256(body)>`, has no nonce, so a backend cannot
+refuse a copy of a request it already served. `handle_app_api_proxy` therefore
+also sends, to every app and with no manifest field, `X-KiroCrew-Proxy-Nonce`
+(`new_proxy_nonce`, 32 lowercase hex) and `X-KiroCrew-Proxy-V2`, `<ts>:<hmac>`
+over `v2:<ts>:<nonce>:<method>:<raw target>:<sha256(body)>` with the same secret
+and the same `ts`. The `v2:` prefix keeps the two MAC inputs disjoint.
+
+- v1 is byte-for-byte unchanged. Builtin and third-party verifiers that parse it
+  strictly keep working, and a backend that does not know the new headers
+  ignores them. Opting in would only delay protection, and the new headers cost
+  an unaware backend nothing, so they are always sent.
+- The proxy strips caller-sent `X-KiroCrew-Proxy-V2` and `X-KiroCrew-Proxy-Nonce`
+  for every app, like the v1 and principal headers above.
+- The nonce and a principal claim's `requestId` are independent random values of
+  one shape, checked by one helper, `_is_request_id`.
+- `verify_proxy_request_v2` fails closed on a missing secret or cache, a nonce
+  outside the one shape, a non-ASCII or over-12-digit timestamp, a timestamp
+  outside 60 seconds, and a signature mismatch, compares as bytes in constant
+  time, and consumes the nonce last. A full cache refuses instead of evicting.
+- Node backends have no SDK package. The api reference carries a dependency-free
+  reference verifier, and a test extracts that snippet and runs it under node
+  against the gateway's signer.
+
 Writers: `apps/routes_proxy.py`, `apps/proxy_auth.py`, `apps/manifest_sections.py`. Tests:
-`test/test_app_proxy_auth.py`, `test/test_app_manifest.py`,
+`test/test_app_proxy_auth.py`, `test/test_app_proxy_auth_v2.py`,
+`test/test_app_proxy_auth_v2_node_reference.py`, `test/test_app_manifest.py`,
 `test/test_gateway_appkit_endpoints_signed_proxy.py`.
+
+## 24a. An app writes a crewmate's Dashboard value through the shared record door
+
+An installed app has one way to put a value on a crewmate's page:
+`POST /api/member-records/{slug}` (`dashboard/handlers/agent_panel_record_app.py`).
+It is the second caller of the record door a script cron appends through
+(`agent_panel_record.record_through_door`): the same `dashboard/custom_value` entry in
+the crewmate's own DM session log, the same caps and quota, the same `custom` fold a
+page binds. Nothing is added to the crew log, the fold catalogue or the sandbox for it.
+
+Three rules are this route's:
+
+1. **The grant is `permissions.api: ["/api/member-records/*"]`** and nothing else. The
+   token middleware's deny-by-default scope check (`token_auth_app_scope`) is what
+   enforces it, so an app that did not declare the prefix, or whose owner has not yet
+   approved it on the detail page (`staged_app_grants`), never reaches the handler.
+   The route is outside `/api/apps/<name>`, which an app token may call ungranted, and
+   outside `/api/members/`, whose every route turns an app token away.
+2. **The writer is the token's app claim.** `request["app"]`, set by the middleware from
+   the claim the gateway minted at the secret exchange, becomes `writer: "app:<id>"`.
+   The body is read for `type` and `data` only. A caller with no app claim -- the
+   owner's cookie, an internal MCP caller, a cron -- is refused `app_token_required`:
+   each already has its own write path, and this one carries an app's provenance.
+3. **The record type is stored as `<app>__<type>`**, the kebab-case app id with `-`
+   written `_`, then `__`, then the type. A page's field path is split on `.` and its
+   segments are `[A-Za-z0-9_]+` (`dashboard_templates.manifest._PATH`), so an app's
+   type is held to that alphabet and the key is one bindable segment. A kebab id
+   rewritten never contains `__` and ends alphanumeric, so the first `__` is always the
+   separator and the key splits one way; `__` is refused in EVERY caller-supplied type
+   (`_record_body_refusal`), cron and app alike, so no writer can spell another app's
+   key. The whole key is held to the 64-character type rule. The kebab premise is
+   not re-checked at the door: `apps.manifest_names.app_name_error` is the single
+   contract every admission path runs, so no live app token carries another shape.
+
+The type bound is the fold's, not the door's: `custom` keeps `CUSTOM_TYPE_LIMIT` (64)
+types per crewmate across every writer, and a new type past it evicts the least
+recently written one whoever wrote it, counted in `types_omitted`
+(`projection_dashboard._custom_step`). So one granted app writing 64 types can push
+other apps' and crons' values off that page. The door does not refuse a new type at a
+full fold, and the app-author docs say so rather than calling this cap a refusal.
+
+An app backend with a command entry point runs as a sandboxed gateway child with the
+whole `crew-log` root hidden from it (section 0, `sandbox_leaves._CREW_HIDDEN_LEAVES`),
+so this route is the only way such an app can write a crewmate's log. A
+`backend.routes` module running inside the gateway process could already append
+anything and gains nothing here. A record is text a page draws; context assembly reads
+no crew-log fold, so it reaches a crewmate's model at most as the one-line
+`fold_summary` the `dashboard_fields` tool gives every fold-sourced field.
+
+Writers: `dashboard/handlers/agent_panel_record_app.py`,
+`dashboard/handlers/agent_panel_record.py` (`record_through_door`). Tests:
+`test/test_agent_panel_routes_record_app.py`.
 
 ## 25. `platform.os` and `platform.installMode` are closed vocabularies, refused at validation
 

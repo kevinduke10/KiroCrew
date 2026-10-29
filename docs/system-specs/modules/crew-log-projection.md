@@ -7,7 +7,7 @@ is a FOLD: `status`, `usage`, `timeline`, `tools`, `approvals`, `subagents` and
 `class` -- the session side panel of the RFC's section 5 table, plus the one fold a
 READER of another unit's log consults rather than a panel. This module is those six
 advertised folds, the internal `class` fold, the slot-keyed `ledger`, `radar`,
-`work`, `panel`, `agentic`, `mistakes`, `workstreams`, `goal`, `waiting` and `workers` folds, the two read routes that serve them, and the frame that pushes a fold
+`work`, `panel`, `agentic`, `mistakes`, `workstreams`, `goal`, `waiting`, `custom` and `workers` folds, the two read routes that serve them, and the frame that pushes a fold
 when the file grows.
 
 The split it implements is RFC NFR-2: the backend folds and cuts pages, the
@@ -19,7 +19,7 @@ sends, so `PROJECTION_NAMES` holds those six. A fold in `SLOT_PROJECTION_NAMES` 
 keyed by a SLOT rather than by one unit: a slot owns one ACP session id at a time,
 so the state it accrues over its life is spread across a unit per id it ran under,
 and answering for it means joining them. `SLOT_PROJECTION_NAMES` holds `ledger`,
-`radar`, `work`, `panel`, `agentic`, `mistakes`, `workstreams`, `goal`, `waiting` and `workers`, and those names are kept OUT of
+`radar`, `work`, `panel`, `agentic`, `mistakes`, `workstreams`, `goal`, `waiting`, `custom` and `workers`, and those names are kept OUT of
 `PROJECTION_NAMES` for that reason -- the growth push and the side panel address a
 session, and pushing a slot-wide value under one session's id would report a partial
 answer as the whole one. `FOLD_NAMES` is the union of the two, and the import-time
@@ -51,7 +51,7 @@ only its registry entry (`_FOLDS`, in `crew_log/projection_registry.py`) beside 
 | `crew_log/projection_ledger.py` | the `ledger` slot fold |
 | `crew_log/projection_internal.py` | the internal `class` and `outline` folds |
 | `crew_log/projection_radar.py` | the `radar` slot fold |
-| `crew_log/projection_dashboard.py` | the `panel`, `agentic` and `mistakes` slot folds |
+| `crew_log/projection_dashboard.py` | the `panel`, `agentic`, `mistakes` and `custom` slot folds |
 | `crew_log/projection_crewmate.py` | the `goal` and `waiting` slot folds, a crewmate's own record |
 | `crew_log/projection_workers.py` | the `workers` slot fold (the worker sessions a mate created) and its internal per-worker part `worker` (what one worker is doing), merged at read |
 | `crew_log/projection_work.py` | the `work` slot fold and the rebuild's `work_slots_naming_board` |
@@ -101,8 +101,8 @@ step for an entry a fold does not name, and `None` would leave a reader unable t
 "all of them" from "not decided".
 
 **Every fold is eager today, and `LAZY_FOLD_REASONS` is empty.** The two families each
-have their own warm path (section 5.1): the nine SLOT folds -- `ledger`, `radar`, `work`,
-`panel`, `agentic`, `mistakes`, `workstreams`, `goal`, `waiting` and `workers` -- are continued in the slot memo, and the seven SESSION folds -- the six the
+have their own warm path (section 5.1): the eleven SLOT folds -- `ledger`, `radar`, `work`,
+`panel`, `agentic`, `mistakes`, `workstreams`, `goal`, `waiting`, `custom` and `workers` -- are continued in the slot memo, and the seven SESSION folds -- the six the
 crew-log panel draws plus the internal `class` -- in the session memo. The internal slot
 fold `worker` is the exception, LAZY with its reason: it is a part of `workers`, folded
 only when `workers` is read, in a slot-memo cell of its own per worker.
@@ -400,6 +400,7 @@ reopened.
 | `panel` | The crew's published webview, folded from `panel/published` entries in the member's own DM session log. |
 | `agentic` | The mate's own dynamic-dashboard values, the latest per field, folded from `dashboard/agentic_value` entries in the member's own DM session log. It keeps up to `DASHBOARD_VALUE_LIMIT` fields, re-checks each value's declared type and byte size against the template manifest, and evicts the least recently written field past the cap. |
 | `mistakes` | The mate's mistake book: refused dashboard writes grouped by `(code, field)` from `dashboard/agentic_refused` entries, worst group first, carrying the correction a later accepted write recorded. It keeps up to `MISTAKE_GROUP_LIMIT` groups. |
+| `custom` | The latest record per type a script cron bound to the mate, or an installed app holding the `/api/member-records/*` grant, appended through the record door (`dashboard/handlers/agent_panel_record.py` for the cron's `ctx.crew_log_append`, `agent_panel_record_app.py` for the app's `POST /api/member-records/{slug}`; both call `record_through_door`), from `dashboard/custom_value` entries: `latest` keyed by the record `type` the writer named (an app's is stored as `<app id with - as _>__<type>`, one bindable path segment that splits one way, so two apps never share a key and `__` is refused in every caller's type), each row `{data, at, seq, writer, member, crew_key}` where `data` is the writer's object (at most `CUSTOM_RECORD_BYTES` serialized, `CUSTOM_RECORD_DEPTH` deep) and `writer` (`cron:<job id>` or `app:<app id>`) and `member` are what the gateway stamped, never the body; `types_omitted` (types evicted past `CUSTOM_TYPE_LIMIT`, least recently written first) and `wrote` (accepted records over the slot's life). Every cap is re-applied on read, and a line naming no type or no writer is skipped, so a planted line is never keyed. Read over the slot's units in succession, like `agentic`, because the latest record per type is what it keeps. Lives in `crew_log/projection_dashboard.py` beside `agentic`. |
 | `goal` | A mate's goal record, from the newest `dashboard/goal_recorded` snapshot: `goal` (the first goal's text), `goals`, `goals_total`, `goals_omitted`, `milestones` (each with its target and the reading the mate last recorded, as text, and its time; whether a milestone is reached is the mate's own word in that reading, never judged here), `milestones_total`, `milestones_omitted` and `changes`. It keeps up to `CREWMATE_ROW_LIMIT` rows per list and `CREWMATE_TEXT_LIMIT` characters per cell; every count covers the whole snapshot, and `*_omitted` says how many rows a list cut. |
 | `worker` | INTERNAL, bound by no page and served by no route: one worker's `row` and the `parent` its first opener named, folded over that worker's own units (`worker_units`); the per-worker part `workers` merges. Lazy. |
 | `waiting` | What a mate waits on the person for, from the newest `dashboard/waiting_changed` snapshot: `items` (newest first), `count` (how many wait in all, from the snapshot's `total`), `omitted` (how many the list cut; each item's `options_omitted` likewise for its choices), `newest` (the newest item's text, `""` when nothing waits) and `changes`. It keeps up to `CREWMATE_WAITING_LIMIT` items, the same bound the producer cuts at, and `CREWMATE_OPTION_LIMIT` choices each. |
@@ -1148,8 +1149,8 @@ pull-forward (`conductor_wake`) is the second subscriber: it holds one keyed
 loop, joined with `baseline=True`, kept in step with the loop table (`install`,
 `sync_subscriptions`) and disposed when the loop ends or the service stops. On a board's event it diffs each item's `last_report_at` against the
 board it last saw and pulls the conductor's armed work-ledger loop forward for an item
-that moved AND whose status is in `work_vocab.WORK_WAKE_STATUSES` (`done`, `blocked`,
-`question`) -- the event's `key` is the conductor's board, so it reads no binding, and a
+that moved AND whose status is in `work_vocab.wake_statuses` (`done`, `blocked`,
+`question`, and `reply` while `work_ledger.remote_dispatch` is on) -- the event's `key` is the conductor's board, so it reads no binding, and a
 `progress` report advances the board without buying a tick the conductor's own gate
 would answer quiet. It is the only wake: a worker's slot closing and a worker's turn
 ending reach none, and a crashed worker is surfaced by the item's `stale` / `orphaned`
@@ -1199,6 +1200,33 @@ baseline: [`rfc-crew-log-wake`, amendment 2026-10-02](../../request-for-change/r
 records the decision that the eager folder only folds and publishes, and consumers
 subscribe.
 
+**The `work` fold also publishes a delta.**
+[`rfc-fold-delta-push`](../../request-for-change/rfc-fold-delta-push.md) section 4
+splits the work. A `work` `FoldAdvanced` carries `kind` (`delta` or `snapshot_needed`),
+`base_revision` and `delta`, and `value=None`: the whole render does not ride on the
+event. A receiver rebuilds it with `fold_delta.value_after` on the value it holds, with
+`eager.published_value` / `eager.try_published_value` (the render recorded for that
+exact revision, inside or right after the publish), or with a snapshot read
+(`conductor_wake._read_board_items`, `DashboardFeed._resync_soon`). The delta
+base is a RENDER DIFF: eager holds the last published render per board (at most 64,
+narrowed to the boards delta-capable tabs watch while the dashboard exporter runs) and `fold_delta.diff_work` compares the new
+render with it item by item. The fold step and the memo cell are untouched. With no
+base held, or a revision that does not rise, the event is `snapshot_needed`.
+`fold_delta.apply_work` is the one apply rule; `website/src/hooks/websocket/workDelta.ts`
+is its TypeScript twin, and both run `website/src/test/fixtures/work-delta-cases.json`.
+`eager.read_labelled` labels a snapshot with the base its next delta applies on: it
+folds OUTSIDE `_published_lock`, then compares the value's revision with the recorded
+base under the lock. The receivers on this path are the bus (each keyed subscriber
+gets a delta only on the revision it took last; any other is relabelled
+`snapshot_needed`), `conductor_wake` (restamps only the items a delta changed), the WS
+exporter (a `slot_fold` frame to a tab that declared `fold_delta.2` and watches the
+board, instead of its `slot_projection` frame; every other tab gets the whole value from
+`eager.published_value`, serialized only when such a tab is a target), `DashboardFeed`
+(applies the delta on its cell, else takes the recorded render, else re-reads on its
+own thread), the browser, and the REST board read (`published_revision`). Change marks
+in the fold step and the memo cell in place of the held render (RFC section 2.1) are
+not built; eager still renders the board once per publish to diff it.
+
 **Why that needed a revision, and why `seq` could not be it.** A slot fold's `last_seq` is
 the NEWEST unit's own seq by contract, and conductor units are folded before worker units.
 So a conductor-side change on a board with any worker bound leaves that number unmoved, and
@@ -1244,8 +1272,11 @@ growth signal and still means "re-read this slot". `{slot, fold, revision, value
 an eager advance of the `work` fold sends. Every other slot fold's advance is sent as
 `{slot, fold, revision}` with no value: the client caches only `work` by fold, so it
 would drop any other value and re-read the board either way, and a frame with no value
-takes that same path as the growth signal. The bus event keeps the whole value for every
-fold, so in-process subscribers are unaffected. For a valued frame the client keeps the
+takes that same path as the growth signal. A `work` frame for a tab that does not apply
+deltas carries the render recorded for that revision; when none is recorded (an older or
+repeated revision) the frame is bare `{slot, fold, revision}` and the tab re-reads the
+board. On the bus, every fold but `work` keeps its whole value; a `work` event carries
+none (above). For a valued frame the client keeps the
 highest revision per (slot, fold), discards anything lower OR equal, and seeds its own
 cache from the value -- so the read is removed
 rather than made cheaper. The seed never moves a cached value backwards: a REST read
@@ -1516,13 +1547,18 @@ is one, and the creator's expander names the relation ("Collapse sessions under
 create it, so the citation it shows names `slot` rather than `key` -- crediting the
 creating to the ancestor would name a session that did not do it. A created row that
 could NOT be nested (nothing open above it, a cycle)
-says who opened it as VISIBLE text under its name -- "Created by {creator} (not
-running, so shown top-level)", the creator's display name when it has a live row, else the slot the
-log cited; the parenthetical names the one reason a created row is top-level
-that real creation order can produce (a cycle is the other, and cannot arise
-from ``session_create``, which never lets a child create its own ancestor) --
-never as a native `title`: a keyboard or touch reader sees no tooltip, and this
-row has nothing else that says it. The table re-checks the edge it is handed --
+says who opened it as VISIBLE text under its name, and the text names the
+creator by its display name, never by a raw slot id. A creator that still has a
+live row reads "Created by {name} (not running, so shown top-level)"; the
+parenthetical names the one reason a created row is top-level that real creation
+order can produce (a cycle is the other, and cannot arise from ``session_create``,
+which never lets a child create its own ancestor). A creator that has closed and
+resolves to no name reads the fixed "Created by a closed session" -- the
+user-facing fact is that the creator closed, and the slot id nobody can read adds
+nothing. The slot the log cited is kept only on the `data-orphan-of` attribute,
+for the sidebar glyph, not in this visible text. The line is VISIBLE text, never
+a native `title`: a keyboard or touch reader sees no tooltip, and this row has
+nothing else that says it. The table re-checks the edge it is handed --
 a key naming no row in the payload, or a chain returning to its own start --
 because a table must never fail to paint on a payload it did not produce.
 

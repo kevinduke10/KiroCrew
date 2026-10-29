@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         _spawn_on_loop,
         _stopped_before_start,
         body_int,
+        body_not_object_error,
         dashboard_slot_key,
         effective_session_key,
         internal_memory_scope,
@@ -267,6 +268,9 @@ async def api_spawn_steer(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid JSON", "code": "invalid_json"}, status=400)
+    not_object = body_not_object_error(body)
+    if not_object is not None:
+        return not_object
     message = str(body.get("message", "") or "").strip()
     if not message:
         return web.json_response(
@@ -384,6 +388,9 @@ async def api_spawn_lost(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid JSON"}, status=400)
+    not_object = body_not_object_error(body)
+    if not_object is not None:
+        return not_object
     batch_id = str(body.get("batch_id", "") or "")[:32]
     if not batch_id or not batch_id.isalnum():
         return web.json_response({"error": "valid batch_id required"}, status=400)
@@ -419,6 +426,9 @@ async def api_spawn_mark_collected(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid JSON", "code": "invalid_json"}, status=400)
+    not_object = body_not_object_error(body)
+    if not_object is not None:
+        return not_object
     ids = body.get("ids")
     if not ids or not isinstance(ids, list):
         return web.json_response(
@@ -463,6 +473,17 @@ async def api_spawn_mark_collected(request: web.Request) -> web.Response:
             owed.extend(slot.take_pending_subagent_deliveries([str(item.get("content") or "")]))
         except Exception:
             logger.debug("Could not claim delivery marks for %s", aid, exc_info=True)
+    if state.subagents is not None:
+        # A completion still queued was settled above. One already handed to
+        # the parent and not queued (injected, or settled by an earlier
+        # mark whose reply the tool never saw) has passed every check that
+        # would discard its id, so it stays out of the set. That makes a
+        # repeated mark a no-op, which the tool relies on when it re-sends one.
+        wanted = {
+            aid
+            for aid in wanted
+            if getattr(state.subagents.get(aid), "_reported_to_parent", False) is not True
+        }
     room = max(0, _COLLECTED_IDS_CAP - len(slot._subagents_inline_collected))
     slot._subagents_inline_collected.update(sorted(wanted)[:room])
     if owed and state.subagents is not None:

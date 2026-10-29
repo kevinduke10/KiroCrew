@@ -203,6 +203,18 @@ class SpawnPlan:
     native_context_documents: tuple[tuple[str, str], ...] = field(default=(), kw_only=True)
     """Admitted sources owned by this exact native launch configuration."""
 
+    kiro_cli_internal_sandbox: bool = field(default=False, kw_only=True)
+    """kiro-cli's internal sandbox confines this spawn.
+
+    Stated by the harness that built the argv: the argv runs kiro-cli's ACP relay
+    AND that sandbox confines it on this host (for KAS, macOS with kiro-cli's switch
+    on; see ``harness.kas._kiro_cli_sandbox_owns_relay``). A relay Crew still wraps
+    leaves it False, so no delegated-only guard refuses a workspace Crew's own layer
+    would have sealed. It moves the sandbox only for
+    a harness in ``ACP_BACKENDS_RELAY_INTERNAL_SANDBOX``
+    (``spawn_delegates_to_internal_sandbox``); any other harness is unaffected.
+    """
+
     host_auth: bool = False
     """Crew answers this process's credential callbacks.
 
@@ -289,6 +301,16 @@ class SessionExtras:
     recorder keeps with the response's ``model`` select
     (``agent_sdk/kas_model_catalog.py``). ``""`` for every other host, which
     records nothing; read here so no other host's session start gains a step.
+    """
+
+    managed_entries: Mapping[str, Any] | None = None
+    """The managed invocation per Crew-managed server the payload declares.
+
+    For a host whose payload carries agent-declared managed servers that the
+    runtime hoists and tokens (KAS): resolved in the same off-loop step as the
+    payload, because resolving the ``kirocrew`` launcher is filesystem and
+    ``PATH`` I/O that must not run on the event loop. Handed to
+    ``kas_agents.hoist_servers_for_session``. ``None`` on every other host.
     """
 
 

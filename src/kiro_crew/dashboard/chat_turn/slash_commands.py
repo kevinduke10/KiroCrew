@@ -34,10 +34,10 @@ from kiro_crew.security import redact
 if TYPE_CHECKING:
     from kiro_crew.dashboard.chat_runner import (
         _BLOCKED_SLASH_COMMANDS,
-        ACP_BACKEND_KAS,
         ACP_BACKEND_KIRO,
         ACP_BACKENDS_COMPACT,
         ACP_BACKENDS_LOCAL_CLEAR,
+        ACP_BACKENDS_LOCAL_HARNESS_COMMANDS,
         MAX_PROMPT_BYTES,
         DashboardState,
         KiroCrewConfig,
@@ -60,6 +60,7 @@ if TYPE_CHECKING:
         COMPACT_FRESH_SESSION_NOTICE,
         COMPACT_REPLAY_PENDING_NOTICE,
     )
+    from kiro_crew.dashboard.chat_turn.regenerate_swap import note_regenerate_reply
     from kiro_crew.dashboard.chat_turn.segment_flush import (
         _append_command_reply,
         _cleared_segment_text,
@@ -366,10 +367,15 @@ def _refuse_blocked_slash(turn) -> None:
         outcome="blocked",
         metadata={"slot": slot.key},
     )
-    slot.append(
-        "assistant",
-        f"⚠️ `{first_word}` is not available in the dashboard.",
-        "msg msg-a",
+    # Recorded like every command answer: a Regenerate of this command
+    # replaces its previous reply with this row (``regenerate_swap``).
+    note_regenerate_reply(
+        slot,
+        slot.append(
+            "assistant",
+            f"⚠️ `{first_word}` is not available in the dashboard.",
+            "msg msg-a",
+        ),
     )
     state.push_slots_update()
 
@@ -569,10 +575,14 @@ async def _turn_slash_gate(turn: _ChatTurn) -> _Flow | None:
         except Exception:
             prompts = []
         if not prompts:
-            slot.append(
-                "assistant",
-                "No prompts found. Create prompts in `~/.kiro/prompts/` (or `~/.kiro/crew/prompts/`).",
-                "msg msg-a",
+            note_regenerate_reply(
+                slot,
+                slot.append(
+                    "assistant",
+                    "No prompts found. Create prompts in `~/.kiro/prompts/` "
+                    "(or `~/.kiro/crew/prompts/`).",
+                    "msg msg-a",
+                ),
             )
             sel().log_tool_invocation(
                 session_key="",
@@ -681,15 +691,20 @@ async def _turn_slash_gate(turn: _ChatTurn) -> _Flow | None:
             # outside ``ACP_BACKENDS_COMPACT``, which is true of one of them --
             # and this is the dashboard, where the claim is most visible. The
             # markdown register matches what that helper already emits.
-            slot.append(
-                "assistant",
-                compact_unsupported_reply(_compact_unsupported),
-                "msg msg-a",
+            note_regenerate_reply(
+                slot,
+                slot.append(
+                    "assistant",
+                    compact_unsupported_reply(_compact_unsupported),
+                    "msg msg-a",
+                ),
             )
             state.push_slots_update()
             return _Flow.END
 
     # ── Harness commands on KAS, which has no command channel ──
+    # (``ACP_BACKENDS_LOCAL_HARNESS_COMMANDS``; GET /api/slash-commands reads the
+    # same set to leave these commands out of the / menu.)
     # The session handle runs a command natively only on kiro-cli; KAS gets it
     # as session/prompt text, and KAS has no built-in /clear there, so the
     # model reads "/clear" as a request and the conversation stays. KAS also
@@ -709,7 +724,7 @@ async def _turn_slash_gate(turn: _ChatTurn) -> _Flow | None:
         and first_word not in _KIRO_ONLY_BLOCKED_SLASH_COMMANDS
     ):
         _command_backend = await _slash_command_backend(state, session_key)
-        if _command_backend == ACP_BACKEND_KAS or (
+        if _command_backend in ACP_BACKENDS_LOCAL_HARNESS_COMMANDS or (
             _this_turn_is_clear and _command_backend in ACP_BACKENDS_LOCAL_CLEAR
         ):
             turn_exit.local_command = first_word
@@ -726,6 +741,13 @@ async def _turn_slash_gate(turn: _ChatTurn) -> _Flow | None:
     turn._dispatch_lock_held = False
     _mirror_stream_ts: str = ""
     turn._mirror_stream_ts = _mirror_stream_ts
+    # The task stream opens lazily on the first mirrored tool call; one attempt
+    # per turn, so a stream Slack refuses is not re-requested on every tool.
+    turn._mirror_stream_tried = False
+    # ts of the mirror's "Thinking…" placeholder; "" once it has been deleted.
+    turn._mirror_thinking_ts = ""
+    # Whether this turn posted its prompt echo; a recovery requeue reads it.
+    turn._mirror_echo_posted = False
     _mirror_chan: str | None = ""
     turn._mirror_chan = _mirror_chan
     _mirror_active_task = ""

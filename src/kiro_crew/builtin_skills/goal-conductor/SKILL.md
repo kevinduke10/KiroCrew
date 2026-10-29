@@ -62,6 +62,8 @@ A candidate qualifies only if **all three** hold:
    green via `gh`; always set `repo` to `owner/name` — without it `gh` resolves
    the PR number against whatever checkout the evaluator runs in, which can be
    another repository's PR, and outside a checkout it cannot be evaluated),
+   `pr_merged` (a PR has merged, also via `gh`, with `repo` required: an open
+   PR reads `pending`, one closed without merging reads `fail`),
    `file` (a path existing), or `human_approval` (the user accepts it —
    legitimate for design reviews and go/no-go gates, but never
    machine-evaluated). **There is deliberately no "run this command" kind**, so
@@ -169,7 +171,19 @@ beats more parallelism: every open item is a session the user may have to read.
 
 ### Dispatch a round
 
-For each item in the round, in **exactly this order**:
+For each item in the round, call `work_dispatch` with the item's `title`, its
+`acceptance`, the `agent`, the `folder` and the `seed` described in the steps
+below. One call runs the four steps in order, sends the seed only after the bind
+succeeded, and on a failure names the step, the refusal code and what it cleaned
+up. It prompts for approval once per item, as `session_send` does. It never
+opens your ledger: Round 0's `action=goal` does, and without it the first step is
+refused `no_ledger`. A reply with
+`outcome=outcome_unknown` lost a reply rather than being refused: read the board
+and the sidebar (or, for a lost seed, the session) before dispatching again.
+
+Run the four steps as separate calls only to bind an existing session. Then
+make **one call at a time**, each after the previous reply came back, in
+**exactly this order**:
 
 1. `work_ledger_record` `action=create`, with the item's `title` and its
    `acceptance` condition — the same condition object `accept_eval.py` parses,
@@ -366,9 +380,20 @@ Each cycle:
    | `done` | the worker CLAIMS acceptance is met | verify (step 3) |
    | `blocked` | an external dependency stopped the work | clear it or re-plan around it; when you answer the worker, `session_send` it, then `work_ledger_record` `action=decide` |
    | `question` | your own decision is needed | `session_send` the answer, then `work_ledger_record` `action=decide`; `session_read_message` the reply |
+   | `reply` | only while the `work_ledger.remote_dispatch` preview is on: the worker's answer to a follow-up you sent it | relay the summary to the worker that asked; run no acceptance, since it claims nothing finished. A `reply` replaces the item's status like any report, so verify a `done` before you send its worker a follow-up |
 
    `blocked` and `question` differ by who must act. That is why they are separate
    values, and why you must not treat one as the other.
+
+   **A person's steer outranks your decision.** When the person types into a
+   worker from the Crew panel, its item gets a `steer` event (`kind: steer`, the
+   person's own words, redacted). Before any `action=decide`, and before any
+   instruction you send a worker, read that item's events (`work_ledger_read`
+   with `item_id=<id>`, no `compact`) and look for `steer` events newer than your
+   last decision. Follow them and never overrule, undo or re-send against them;
+   a steer that conflicts with your plan wins and you re-plan around it. A steer
+   never moves the acceptance bar: the verdict still comes from
+   `accept_eval.py`.
 
    A `blocked` or `question` row may also carry the worker's `reason`: `approval`
    (a tool approval timed out) or `needs_human` (only a person can unblock it).
@@ -809,7 +834,8 @@ what the composer renders:
   and `patrol_budget.py`; every call is
   audit-logged and every call prompts. The evaluator accepts **no command, argv
   array, or shell string from a spec** — it builds every argv it runs from a
-  fixed template, so `pr_checks` becomes `gh pr checks <n>` and nothing else
+  fixed template, so `pr_checks` becomes `gh pr checks <n>`, `pr_merged`
+  becomes `gh pr view <n> --repo <owner/name> --json state`, and nothing else
   executes. That is deliberate and load-bearing: this script is invoked as an
   approved wrapper, so a spec that could name a command would turn it into a
   general way to run one, and Kiro Crew's denied-command floor cannot see inside

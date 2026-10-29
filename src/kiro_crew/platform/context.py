@@ -37,6 +37,7 @@ if TYPE_CHECKING:  # avoid import cycles — config.loader imports heavy modules
         AppRegistryPolicy,
         AppsLoader,
         CapabilityManager,
+        CloudInstancePolicyProvider,
         CredentialPolicy,
         DashboardContributor,
         DeniedRuleProvider,
@@ -343,6 +344,10 @@ class PlatformContext:
     # plus whatever the edition adds), each backed by a ``LaunchEngine`` the
     # core's launch job drives. v1 addition (no CONTRACT_VERSION bump).
     remote_provisioners: "RemoteProvisionerProvider"
+    # Managed policies and boundary statements added to every EC2 crew's
+    # instance role (a host agent an organization requires). Empty by default.
+    # v1 addition (no CONTRACT_VERSION bump).
+    cloud_instance_policy: "CloudInstancePolicyProvider"
     # Where Report a Problem / `kirocrew doctor` send the user to file the
     # bundle. REPLACE-capable like ``tips``: the public pre-filled GitHub link
     # or the edition's own URL, never a merge of the two. The backend half of
@@ -653,6 +658,17 @@ PEEK_CALLERS: "dict[str, str]" = {
         "NARROW what is selectable, never route audio anywhere. It must peek: the STT "
         "half runs inside KiroCrewConfig.load(), and current_context() with nothing "
         "installed loads config, which would re-enter that load."
+    ),
+    "edition_locks.py::policy_permits": (
+        "no-context answer is to fall through to current_context() and the full "
+        "fail-closed evaluation, exactly as if the peek were absent. The peek only "
+        "short-circuits an oss build whose INSTALLED policy does not name the scope, "
+        "where the answer is the same permit that evaluation would give."
+    ),
+    "edition_locks.py::policy_governs": (
+        "no-context answer is to fall through to current_context(), and its error "
+        "answers 'governed', which refuses the item; the peek only skips that "
+        "resolution on a host that already installed a context."
     ),
     "platform/governance_parts/carriers.py::active_policy_distribution": (
         "no-context answer is an unconfigured PolicyDistribution, i.e. no "

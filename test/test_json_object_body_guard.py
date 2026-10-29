@@ -163,6 +163,10 @@ _CAP_REASONS = {
 _CAP_REGISTER: dict[str, tuple[str, str]] = {
     # Pre-existing capped sites -- the bounded read's live consumers.
     "chat_pins.py::api_chat_pins_create": ("<default>", _BOUNDED_BY_DEFAULT),
+    # A reaction create body is a slot key, a message id and one fixed-set
+    # emoji -- all short control fields, like the pin create above -- so the
+    # shared default ceiling sits far above any legitimate body.
+    "chat_reactions.py::api_chat_reactions_create": ("<default>", _BOUNDED_BY_DEFAULT),
     # A checklist tick is one task id and one boolean, so the shared default
     # ceiling is far above any legitimate body.
     "chat_todo.py::api_chat_slot_todo": ("<default>", _BOUNDED_BY_DEFAULT),
@@ -199,6 +203,13 @@ _CAP_REGISTER: dict[str, tuple[str, str]] = {
     ),
     "handlers/messaging.py::api_teams_activity": (
         "TEAMS_MAX_ACTIVITY_BYTES",
+        _BOUNDED_EXPLICIT,
+    ),
+    # Both mediated-secret routes (the capability claim and the request) admit through
+    # ``_admit``. A mediated request carries the agent's own body, headers and query, so
+    # it gets the 1 MiB cap the MCP stub refuses past before sending, read before decode.
+    "handlers/mediated_secrets.py::_admit": (
+        "mediated_request_capability.MAX_REQUEST_PAYLOAD_BYTES",
         _BOUNDED_EXPLICIT,
     ),
     # The UI-preference backup stores values up to MAX_VALUE_BYTES (64 KB) and a
@@ -342,8 +353,13 @@ _CAP_REGISTER: dict[str, tuple[str, str]] = {
     # chat_handlers.py and its chat_api owners: control-field slot mutations take
     # the cap; the sites that carry a chat message, queued-edit text, follow-up
     # prompts, or injected context/note content stay uncapped.
-    "chat_api/chat_send.py::api_chat": ("None", _UNBOUNDED_USER_CONTENT),
+    "chat_api/chat_send.py::_api_chat_send": ("None", _UNBOUNDED_USER_CONTENT),
     "chat_api/slot_create.py::api_chat_slot_create": ("<default>", _BOUNDED_CONTROL_FIELDS),
+    # A hub's decision on a remote work item: one string, capped by the store.
+    "handlers/remote_work_item.py::api_chat_slot_work_item_patch": (
+        "<default>",
+        _BOUNDED_CONTROL_FIELDS,
+    ),
     "chat_api/continue_turn.py::api_chat_slot_end_wait": ("<default>", _BOUNDED_CONTROL_FIELDS),
     "chat_api/turn_stop.py::api_chat_slot_interrupt": ("<default>", _BOUNDED_CONTROL_FIELDS),
     "chat_api/prompt_queue.py::api_chat_slot_queue_edit": ("None", _UNBOUNDED_USER_CONTENT),
@@ -375,6 +391,10 @@ _CAP_REGISTER: dict[str, tuple[str, str]] = {
     "chat_api/resume.py::api_chat_slot_resume": ("<default>", _BOUNDED_CONTROL_FIELDS),
     "chat_api/slot_approval.py::api_chat_mode": ("<default>", _BOUNDED_CONTROL_FIELDS),
     "chat_api/slot_approval.py::api_chat_slot_approve": ("<default>", _BOUNDED_CONTROL_FIELDS),
+    # An ask answer is at most MAX_TOOL_RESULT_CHARS (8000) of answer text plus an
+    # ask id, checked again by _parse_answer_body, so the shared 64 KB default sits
+    # far above any legitimate body.
+    "handlers/slot_question.py::_read_body": ("<default>", _BOUNDED_BY_DEFAULT),
     # An MCP elicitation answer: two ids, an action and at most PROPERTIES_MAX
     # form values of up to STRING_VALUE_MAX_CHARS each -- a form the card drew
     # must be answerable, so the cap is sized from those bounds.
@@ -399,6 +419,10 @@ _CAP_REGISTER: dict[str, tuple[str, str]] = {
         _BOUNDED_CONTROL_FIELDS,
     ),
     "handlers/mcp_gateway_stubs.py::api_mcp_gateway_set_stub": (
+        "<default>",
+        _BOUNDED_CONTROL_FIELDS,
+    ),
+    "handlers/mcp_gateway_stubs.py::api_mcp_gateway_server_launches": (
         "<default>",
         _BOUNDED_CONTROL_FIELDS,
     ),

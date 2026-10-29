@@ -4,6 +4,7 @@ import { Command, Loader2 } from 'lucide-react'
 
 import { useAppDispatch, useAppSelector, useAppStore } from '../../store'
 import { selectSlotsWithLiveLastTs } from '../../store/slotLastTs'
+import { selectPersonSlots } from '../../store/dashboardSlice'
 import { findReport } from '../../utils/errorReport'
 import { errMessage } from '../../utils/thunkError'
 import ErrorNotice from '../../components/ErrorNotice'
@@ -27,12 +28,11 @@ import {
   type ContributedCommand,
 } from './contributedCommands'
 import { useImeGuard } from '../../hooks/useImeGuard'
-import { usePreviewFlag } from '../../hooks/usePreviewFlag'
 import { usePointerMotion } from '../../hooks/usePointerMotion'
-import { PREVIEW_CREW } from '../../utils/previewFlags'
 import { ARTIFACTS_ROW_LIMIT, COPY_KEY, DEBOUNCE_MS, ENTER_KEY, SKELETON_WIDTHS, actionLabel, headerOf, rootRowCopyable, type Scope } from './commandBarOverlayModel'
 import { useCommandBarOverlayEngines } from './useCommandBarOverlayEngines'
 import { useCommandBarOverlayRootRows } from './CommandBarOverlayRootRows'
+import { crewWaitingApprovals } from '../../pages/chat/command-center/model'
 import { useCommandBarOverlaySlots } from './useCommandBarOverlaySlots'
 import { useCommandBarOverlayActivation } from './useCommandBarOverlayActivation'
 import { commandBarOverlaySlotRenderer } from './CommandBarOverlaySlot'
@@ -65,20 +65,6 @@ export default function CommandBarOverlay({
   initialQuery?: string
 }) {
   const ime = useImeGuard()
-  /**
-   * Whether the Crewmates preview is on for this reader.
-   *
-   * This bar is an INGRESS to `/members`, and that page is registered with
-   * `previewFlag: PREVIEW_CREW` — so every other door to it applies this gate, and a
-   * surface that did not would advertise a page the operator has not opted into. The
-   * app ships `defaultEnabled: true`, so without this a default install shows
-   * `Search Crewmates` in the root, carries a typed query into it, and lets Enter
-   * reach `/members` while the page itself is supposed to be invisible.
-   *
-   * It gates all THREE rows this feature adds — the view row, the fallback row and the
-   * empty-state row — because each one is independently reachable.
-   */
-  const crewPreview = usePreviewFlag(PREVIEW_CREW)
   const vv = useVisualViewport()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const dialogRef = useRef<HTMLDivElement | null>(null)
@@ -191,8 +177,17 @@ export default function CommandBarOverlay({
   // owe the user something without issuing a request: the facts are already here,
   // and the alternative surfaces (sidebar, recents) are reading the same three.
   const liveSlots = useAppSelector(selectSlotsWithLiveLastTs)
+  // The person's own sessions: a Crew Mode chat's workers are listed in its side
+  // panel, never in the Needs You or Recent sessions rows (the full set stays for
+  // the engines, which key navigation and the mates' running state on it).
+  const personSlots = useAppSelector(selectPersonSlots)
+  // What those hidden workers owe the person, carried by their root: a worker's
+  // tool approval is counted on its conductor over the FULL slot set, so Needs
+  // You still names it (the fleet page counts the same way, `crewWaitingApprovals`).
+  const crewWaiting = useMemo(() => crewWaitingApprovals(liveSlots), [liveSlots])
   const unreadSlots = useAppSelector(s => s.dashboard.unreadSlots)
   const slotStatusDetail = useAppSelector(s => s.chat.slotStatusDetail ?? {})
+  const subagentQueued = useAppSelector(s => s.chat.subagentQueued)
   const simplifiedToolNames = useSimplifiedToolNames()
   // `aria-modal` is a promise that Tab cannot reach the page behind the dialog, so
   // the trap has to be real. Escape is owned by the dialog panel's own keydown
@@ -201,6 +196,7 @@ export default function CommandBarOverlay({
   useDialogFocusTrap(dialogRef, onClose, { handleEscape: false })
   const {
     sessions,
+    openSessionsKey,
     recentSessions,
     apps,
     chatFoldersRef,
@@ -211,7 +207,7 @@ export default function CommandBarOverlay({
     folders,
     runningMates,
     mates,
-  } = useCommandBarOverlayEngines({ scope, liveSlots, dispatch, navigate })
+  } = useCommandBarOverlayEngines({ scope, liveSlots, subagentQueued, dispatch, navigate })
 
   // The query is NOT reset here. It is seeded at mount, and clearing it on the open
   // edge would drop the type-ahead along with anything typed before this effect ran.
@@ -300,8 +296,8 @@ export default function CommandBarOverlay({
   commandByIdRef.current = commandById
 
   const ranked = useCommandBarOverlayRootRows({
-    liveSlots, unreadSlots, slotStatusDetail, simplifiedToolNames, dispatch, navigate, store, cycleTheme,
-    crewPreview, commandById, apps, settingsGovernance, resolved, scope, query, usage, attentionExpanded,
+    liveSlots: personSlots, crewWaiting, unreadSlots, slotStatusDetail, simplifiedToolNames, dispatch, navigate, store, cycleTheme,
+    commandById, apps, settingsGovernance, resolved, scope, query, usage, attentionExpanded,
     setAttentionExpanded,
   })
 
@@ -312,8 +308,9 @@ export default function CommandBarOverlay({
     mateQuery, matesError, matesSearchError, refetchMates,
     rowsAnswerTheQuery, slots, rowCount, scopeLoading, scopeFetching,
   } = useCommandBarOverlaySlots({
-    scope, debounced, query, sessions, recentSessions, artifacts, folderSortMode, folders, runningMates, mates,
-    argCommand, crewPreview, ranked, selected, setSelected,
+    scope, debounced, query, sessions, openSessionsKey, recentSessions, artifacts, folderSortMode, folders,
+    runningMates, mates,
+    argCommand, ranked, selected, setSelected,
   })
 
   const { seedNewSession, activateIndex } = useCommandBarOverlayActivation({

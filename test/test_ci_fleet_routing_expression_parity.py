@@ -26,6 +26,27 @@ _WORKFLOWS_DIR = _REPO_ROOT / ".github" / "workflows"
 _FAST_GATE_PUSH_SKIP_CLAUSE = "github.event_name != 'push' || vars.MERGE_QUEUE_ENABLED != 'true'"
 
 _ACTOR_PREDICATE = "contains(fromJSON(vars.CODEBUILD_ACTOR_IDS || '[]'), github.actor_id)"
+# A route that the fleet did not admit falls back TWICE, and both branches are
+# load-bearing. A run EXECUTING in this repository takes the `kirocrew-runners`
+# group's own runner label, which keeps it off the standard pool whose
+# concurrency is shared enterprise-wide. A run executing anywhere else -- a fork
+# running one of these workflows on its own `main` -- cannot reach an
+# organization runner group at all, so it stays on the hosted image: a label no
+# runner there carries would leave the job queued until GitHub cancelled it,
+# which is worse than the shared pool, not better.
+#
+# The repository test appears twice in the full expression for different
+# reasons. The first is ANDed into fleet eligibility alongside the actor and
+# event tests; this one decides only which non-fleet destination is reachable,
+# so neither can be derived from the other.
+#
+# Not every constant below carries this tail yet. The ones that do not are the
+# ones whose workflows have not moved, and their literal hosted fallback is the
+# current contract, not an oversight.
+_GROUP_THEN_HOSTED_TAIL = (
+    "|| github.repository == 'kirodotdev/KiroCrew' && 'kirocrew-linux-4-core' "
+    "|| 'ubuntu-latest' }}"
+)
 _CANONICAL_ROUTING_EXPR = (
     "${{ github.repository == 'kirodotdev/KiroCrew' && "
     + _ACTOR_PREDICATE
@@ -53,14 +74,14 @@ _CANONICAL_PUSH_EXPR = (
     + _ACTOR_PREDICATE
     + " && github.event_name == 'push' && "
     "format('codebuild-kirocrew-gha-linux-{0}-{1}', github.run_id, github.run_attempt) "
-    "|| 'ubuntu-latest' }}"
+    + _GROUP_THEN_HOSTED_TAIL
 )
 _CANONICAL_DISPATCH_EXPR = (
     "${{ github.repository == 'kirodotdev/KiroCrew' && "
     + _ACTOR_PREDICATE
     + " && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && "
     "format('codebuild-kirocrew-gha-linux-{0}-{1}', github.run_id, github.run_attempt) "
-    "|| 'ubuntu-latest' }}"
+    + _GROUP_THEN_HOSTED_TAIL
 )
 # The sensitive-change gate runs only default-branch scripts, never PR code, so
 # every pull_request and pull_request_review event may use the fleet.
@@ -93,9 +114,13 @@ _CANONICAL_DISPATCH_MERGE_GROUP_EXPR = (
     "|| 'ubuntu-latest' }}"
 )
 
-# These lanes remain hosted: untrusted-content model execution, schedule/issue
-# triggers, or an isolation contract tied to hosted paths. The scope-review
-# generate job's action-code Write fence is one such path-sensitive contract.
+# These lanes take no fleet route: untrusted-content model execution,
+# schedule/issue triggers, an isolation contract tied to hosted paths, or a
+# tag-triggered release job whose capacity must not depend on the tagger. The
+# scope-review generate job's action-code Write fence is one such
+# path-sensitive contract; the release jobs are the capacity case, since the
+# fleet's actor admission leaves any tagger outside CODEBUILD_ACTOR_IDS on the
+# shared standard pool and the tagger rotates with the on-call.
 _PERMANENT_EXCEPTIONS = {
     ("security-scope-review.yml", "generate"),
     ("security-scope-review.yml", "validate"),
@@ -116,6 +141,20 @@ _PERMANENT_EXCEPTIONS = {
     ("ux-review.yml", "ux-review"),
     ("design-review.yml", "design-review"),
     ("ci-runner-watchdog.yml", "watchdog"),
+    ("release.yml", "version"),
+    ("release.yml", "resolve-promotion"),
+    ("release.yml", "stable-gate"),
+    ("release.yml", "github-release"),
+    ("release.yml", "record-promotion"),
+    # Fork helpers. Fork work cannot reach the fleet at all: the `workflow_job`
+    # webhook payload carries no fork indicator, so the AWS side cannot admit
+    # it. None of these materializes fork code, and each one's `if` requires
+    # head repo != github.repository, so a personal fork -- which cannot reach
+    # an org runner group either -- never starts them.
+    ("fork-internal-content-scan.yml", "fork-internal-content-scan"),
+    ("fork-pr-description.yml", "describe"),
+    ("fork-workflow-guard.yml", "guard"),
+    ("fork-workflow-guard.yml", "strip-stale-override"),
 }
 
 # A permanent exception stays OFF the CodeBuild fleet; it does not have to stay
@@ -128,26 +167,22 @@ _HOSTED_EXCEPTION_RUNNERS: dict[tuple[str, str], object] = {
     ("first-principles-review.yml", "first-principles-review"): {"group": "kirocrew-runners"},
     ("ux-review.yml", "ux-review"): {"group": "kirocrew-runners"},
     ("design-review.yml", "design-review"): {"group": "kirocrew-runners"},
+    ("release.yml", "version"): {"group": "kirocrew-runners"},
+    ("release.yml", "resolve-promotion"): {"group": "kirocrew-runners"},
+    ("release.yml", "stable-gate"): {"group": "kirocrew-runners"},
+    ("release.yml", "github-release"): {"group": "kirocrew-runners"},
+    ("release.yml", "record-promotion"): {"group": "kirocrew-runners"},
+    ("fork-internal-content-scan.yml", "fork-internal-content-scan"): {"group": "kirocrew-runners"},
+    ("fork-pr-description.yml", "describe"): {"group": "kirocrew-runners"},
+    ("fork-workflow-guard.yml", "guard"): {"group": "kirocrew-runners"},
+    ("fork-workflow-guard.yml", "strip-stale-override"): {"group": "kirocrew-runners"},
 }
 _DEFAULT_HOSTED_EXCEPTION_RUNNER = "ubuntu-latest"
 
 # Fixed expectations, never inferred from the workflow contents: a route
 # silently removed or a new unreviewed fleet job must fail the inventory check.
 _EXPECTED_ROUTED_JOBS = {
-    ("fast-gate.yml", "vendor-manifest"),
-    ("fast-gate.yml", "brand-lint"),
-    ("fast-gate.yml", "comment-history-lint"),
-    ("fast-gate.yml", "focus-cue-lint"),
-    ("fast-gate.yml", "feature-map-lint"),
-    ("fast-gate.yml", "changelog-history"),
-    ("fast-gate.yml", "decision-ledger-history"),
-    ("fast-gate.yml", "builtin-skill-scope"),
-    ("fast-gate.yml", "loop-bound-locks"),
-    ("fast-gate.yml", "testpaths-coverage"),
-    ("fast-gate.yml", "cwd-relative-repo-reads"),
-    ("fast-gate.yml", "harness-parity"),
-    ("fast-gate.yml", "memory-store-seam"),
-    ("fast-gate.yml", "docs-lint"),
+    ("fast-gate.yml", "source-gates"),
     ("fast-gate.yml", "static-ratchets"),
     ("fast-gate.yml", "flake-pattern-ratchet"),
     ("build.yml", "build-wheel"),
@@ -156,17 +191,13 @@ _EXPECTED_ROUTED_JOBS = {
     ("main-ratchet-audit.yml", "frontend-ceiling"),
     ("main-ratchet-audit.yml", "bundle-ceiling"),
     ("main-ratchet-audit.yml", "report"),
-    ("release.yml", "version"),
-    ("release.yml", "resolve-promotion"),
-    ("release.yml", "stable-gate"),
-    ("release.yml", "github-release"),
-    ("release.yml", "record-promotion"),
     ("pages.yml", "build"),
     ("pages.yml", "deploy"),
-    ("cross-platform.yml", "cross-platform"),
+    # PR Size, PR Scope, Cross-Platform Portability and Screenshot Evidence:
+    # four read-only policies, one job, one fleet route. The licence gate keeps
+    # its own job because it needs a write token.
+    ("pr-policy.yml", "pr-policy"),
     ("dependency-review.yml", "license-gate"),
-    ("pr-scope.yml", "pr-scope"),
-    ("screenshot-evidence.yml", "screenshot-evidence"),
     ("macos-on-demand.yml", "decide"),
     ("ci.yml", "changes"),
     ("ci.yml", "await-fast-gate"),

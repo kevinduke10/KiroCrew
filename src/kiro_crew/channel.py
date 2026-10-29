@@ -192,7 +192,7 @@ CHANNEL_AGENT_BLOCKED_TOOLS: tuple[str, ...] = (
     # blocked for the same exfiltration reason.
     "session_summary",
     # The fan-out verb, blocked for the reason `session_send` is and then some: one
-    # call reaches every session the caller created, so a channel agent acting on
+    # call with `all: true` reaches every session the caller created, so a channel agent acting on
     # words from a thread other people are in would relay them into the user's
     # whole worker fleet at once.
     "session_broadcast",
@@ -202,6 +202,9 @@ CHANNEL_AGENT_BLOCKED_TOOLS: tuple[str, ...] = (
     # blocked for, one step shallower.
     "session_status",
     "session_create",
+    # Creates, opens, binds and seeds a worker in one call: session_create's and
+    # session_send's containment reasons together.
+    "work_dispatch",
     "session_fork",
     "session_close",
     # The tree verbs, blocked on the containment reason the rest share: a channel

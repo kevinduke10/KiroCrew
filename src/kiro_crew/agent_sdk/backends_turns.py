@@ -296,9 +296,9 @@ ACP_BACKENDS_STEER_RETRACT = frozenset({ACP_BACKEND_KIRO})
 # ("Summarize conversation to avoid hitting the context limit"), intercepts the
 # ``/compact`` prompt as that command, and answers the same ``session/prompt``
 # request once the compaction is done. On 1.11.0 the frames are a MARKED tool-call
-# pair -- ``_meta.contextCompaction``. 2.2.2 sends the same pair UNMARKED, re-measured
-# in the Real Adapter Contract lane and committed as
-# ``test/fixtures/acp_frames/codex/compact-live-2.2.2.jsonl``.
+# pair -- ``_meta.contextCompaction``. 2.2.2 and 2.3.0 send the same pair UNMARKED,
+# re-measured in the Real Adapter Contract lane and committed as
+# ``test/fixtures/acp_frames/codex/compact-live.jsonl``.
 # ``_dispatch.parse_codex_compaction_update`` reads both shapes and
 # translates them into the compaction status every consumer already reads, so the waiter
 # is satisfied from inside the turn rather than stranded after it. Its native
@@ -527,8 +527,8 @@ ACP_BACKENDS_INLINE_COMPACTION = frozenset(
 
 # Inline-compaction members whose compaction pair may arrive UNMARKED, and so are
 # read by ``_dispatch.CODEX_COMPACTION_TITLE`` on a ``think`` call plus the start's
-# ``toolCallId``. codex is the member: codex-acp 2.2.2 sends the pair with no
-# ``_meta``, captured in ``test/fixtures/acp_frames/codex/compact-live-2.2.2.jsonl``.
+# ``toolCallId``. codex is the member: codex-acp 2.3.0 sends the pair with no
+# ``_meta``, captured in ``test/fixtures/acp_frames/codex/compact-live.jsonl``.
 # Every other member is read by the marker alone, so its own ``think`` call with
 # that title is never taken for a compaction.
 ACP_BACKENDS_UNMARKED_COMPACTION_PAIR = frozenset({ACP_BACKEND_CODEX})
@@ -621,6 +621,27 @@ ACP_BACKENDS_LOCAL_CLEAR = frozenset(
         ACP_BACKEND_COPILOT,
     }
 )
+
+# Backends where the dashboard answers every harness command itself, because the
+# harness has no way to run one. A member's harness command never reaches it:
+# ``/clear`` is dropped the way ``reset_conversation`` does, any other command
+# gets a notice, and ``GET /api/slash-commands`` lists only the commands the
+# dashboard serves without the harness (``/agent <name>``, ``/clear``, ``/goal``,
+# ``/prompts``, ``/side``, ``/workflow``), plus ``/compact``, which has a gate of
+# its own.
+#
+# - kas: refuses ``_kiro.dev/commands/execute`` with -32603 for every command
+#   (``test/fixtures/acp_frames/kas/commands-refused-live.jsonl``), and its
+#   ``available_commands_update`` lists only custom agents and skills, so a
+#   ``/help`` or ``/context`` sent as prompt text reaches the model as a message.
+#
+# kiro is not a member: it runs its commands over ``_kiro.dev/commands/execute``.
+# claude is not a member: its harness owns its own command set. codex, opencode,
+# pi, deepseek, goose and copilot are not members: each serves the commands it
+# knows from its own prompt handler, so their other commands keep the prompt
+# path (``ACP_BACKENDS_LOCAL_CLEAR`` covers the ``/clear`` most of them lack). A
+# harness added later stays out until its command handling is checked.
+ACP_BACKENDS_LOCAL_HARNESS_COMMANDS = frozenset({ACP_BACKEND_KAS})
 
 # Backends whose model-side REFUSAL arrives with a structured reason, not just a
 # stop reason. When the Kiro service's content filter declines a turn, kiro-cli

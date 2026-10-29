@@ -99,9 +99,17 @@ export interface MemberRosterRow {
   source?: 'kirocrew' | 'builtin' | 'package' | string
   /** User's favourite mark; toggled via PUT /api/agents/{name}. */
   starred?: boolean
-  /** Created on the dashboard: `source` is `kirocrew` AND the record carries
-   *  a member id. Listed on the roster unasked. Absent on an older gateway. */
+  /** The person created this crewmate (the Crewmates page's create, or an
+   *  approved `crewmate.create` / `crewmate.import` card): `source` is
+   *  `kirocrew` AND the record carries a member id. Never true for the reserved
+   *  `default` member. Listed on the roster even with an empty chat. Absent on
+   *  an older gateway. */
   dashboard_created?: boolean
+  /** The reserved `default` row only: its DM thread holds a message the person
+   *  sent (not a welcome, a scheduled run, an auto-nudge or a relayed
+   *  `session_send`). The roster lists `default` only when this is true.
+   *  Absent on every other row and on an older gateway. */
+  has_user_dm_message?: boolean
   /** The Crewmates-page DM thread holds at least one message (a live slot's
    *  unflushed rows included). Listed on the roster unasked. Absent on an
    *  older gateway. */
@@ -143,16 +151,6 @@ export interface MemberActivityEntry {
 /** One team of crewmates (GET /api/teams). `members` are exact crew NAMES in
  *  the user's order; a crewmate is on at most one team, which the store
  *  enforces on every write. */
-/** GET /api/members/{slug}/recap: the work a crewmate holds, for its cold-start
- *  welcome. Goals still open (in its thread or a recent session), then the
- *  newest other sessions that ran as it. */
-export interface MemberRecap {
-  slug: string
-  member: string
-  paused: { goal: string; next: string }[]
-  recent: { title: string; ts: number }[]
-}
-
 /** One key result: how the crewmate will know its goal is reached. */
 export interface GoalKeyResult {
   id: string
@@ -347,6 +345,10 @@ export function createAgentsEndpoints({ post, put, del, j, jfetch: fetch, sessio
         markdown_refused_backends?: string[]
         /** The harnesses that load a markdown agent spec. */
         markdown_spec_backends?: string[]
+        /** The conductor Crew Mode runs (`agent.crew_mode_agent`). */
+        crew_mode_agent?: string
+        /** Every conductor template; a normal chat's picker leaves these out. */
+        conductor_agents?: string[]
       }>,
     /** `extra` carries per-request headers (a guided create's `X-Guide-*`);
      *  it rides THIS request only, never the shared transport. */
@@ -515,12 +517,6 @@ export function createAgentsEndpoints({ post, put, del, j, jfetch: fetch, sessio
         } | null
         truncated: boolean
       }>,
-    // The work a crewmate holds (open goals, recent sessions), read for its
-    // cold-start welcome. `member` is the exact crew name (slugs are lossy).
-    memberRecap: (slug: string, member: string) =>
-      fetch(
-        '/api/members/' + encodeURIComponent(slug) + '/recap?member=' + encodeURIComponent(member),
-      ).then(j) as Promise<MemberRecap>,
     // A crewmate's goals (the Goals tab). Every write is an owner action and
     // answers the whole record; `member` is the exact crew name (slugs are lossy).
     memberGoals: (() => {

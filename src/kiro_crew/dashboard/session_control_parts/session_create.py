@@ -29,6 +29,7 @@ from kiro_crew.config.sections import (
     worker_session_defaults,
 )
 from kiro_crew.crew_log import emit as crew_log_emit
+from kiro_crew.dashboard.approval_inheritance import inherit_posture
 from kiro_crew.dashboard.chat_delivery import sanitize_outbound
 from kiro_crew.dashboard.chat_folders import (
     _folder_declared_project,
@@ -49,10 +50,14 @@ from kiro_crew.dashboard.session_control_parts.caller_access import (
     _channel_link_of,
     _cron_caller,
     _delegation_lineage_fenced,
-    _member_bypass,
+    _dispatch_bypass,
     _member_caller,
     caller_slot_key,
     session_control_enabled,
+)
+from kiro_crew.dashboard.session_control_parts.crew_filing import (
+    _crew_filing_answer,
+    _in_turned_on_crew_tree,
 )
 from kiro_crew.dashboard.session_control_parts.session_titles import _clean_new_session_title
 from kiro_crew.dashboard.session_control_parts.target_authorization import (
@@ -237,10 +242,12 @@ async def create_session(
     # opt-in — passes without `agent.session_control`. That member bypass is
     # itself gated by the operator ceiling `agent.member_dispatch` (default
     # true = today's behaviour); with it off the member falls back under the
-    # switch like any other caller. Every other caller still needs the switch.
-    # The member's automatic grant is bounded by ownership in `authorize_target`,
-    # not here: creation makes the caller the owner by construction.
-    if not session_control_enabled() and not _member_bypass(state, caller_key):
+    # switch like any other caller. The Conductor in the owner's own tab gets the
+    # same bypass under the same ceiling (`_conductor_bypass`). Every other caller
+    # still needs the switch. Both automatic grants are bounded by ownership in
+    # `authorize_target`, not here: creation makes the caller the owner by
+    # construction.
+    if not session_control_enabled() and not _dispatch_bypass(state, caller_key):
         raise SessionControlError(
             "session control is disabled in config (agent.session_control)",
             code="session_control_disabled",
@@ -296,6 +303,13 @@ async def create_session(
     # stale folder intent.
     folder_project_raw: str | None = None
     folder_project = ""
+    # A Crew Mode chat and every session it dispatches stay out of the person's
+    # folders: the session is not FILED in the named folder, for every caller of
+    # this verb, by the same rule the slot list stamps (``crew_mode``), and the
+    # answer says so. The folder still gives the child its declared project
+    # directory, so a worker does its work in the folder's repository.
+    in_crew_tree = _in_turned_on_crew_tree(state, str(getattr(caller_slot, "key", "") or ""))
+    folder_ignored = bool(folder_id) and in_crew_tree
     if folder_id:
         folder_snapshot = await state.read_folders(
             lambda folders: [dict(folder) for folder in _safe_folder_tree(folders)]
@@ -1117,8 +1131,12 @@ async def create_session(
         slot._trust = slot._trust_reads = False
         profile_worker = own_worker and bool(crewmate_name_for(cfg, child_execution))
         if not profile_worker:
-            slot._trust = bool(getattr(live_caller, "_trust", False))
-            slot._trust_reads = bool(getattr(live_caller, "_trust_reads", False))
+            # A trust granted from a Crew Mode conductor's approval card ("Trust
+            # this crew member", ``_trust_card_scoped``) covers that crew member
+            # only, so the sessions it creates are born asking, on that same card.
+            # Marked inherited, so a later mode change on the creator reaches this
+            # child too (``approval_inheritance``), not only the posture held now.
+            inherit_posture(slot, live_caller)
         inherited_trust = bool(slot._trust)
         inherited_trust_reads = bool(slot._trust_reads)
         # The agent's memory silo, from the bindings already resolved above. Held
@@ -1140,7 +1158,7 @@ async def create_session(
         # authorization-vs-execution split as the agent binding, one layer down.
         if not slot.project:
             slot.project = project_dir
-        if folder_id:
+        if folder_id and not folder_ignored:
             # Filed inside the same synchronous window that configures the slot, so
             # the session is never observable unfiled -- that atomicity is the point.
             # Existence was confirmed under the store lock above, and folder
@@ -1416,6 +1434,7 @@ async def create_session(
         **({"autocompact_pct": pct_override} if pct_override is not None else {}),
         **({"inherited": inherited_fields} if inherited_fields else {}),
         **({"inherited_model_dropped": True} if inherited_model_dropped else {}),
+        **_crew_filing_answer(folder_named=bool(folder_id), in_crew_tree=in_crew_tree),
     }
 
 

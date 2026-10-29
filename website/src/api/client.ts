@@ -163,6 +163,7 @@ export type {
   McpShareReason,
   McpShareRecommendation,
   McpMeasureProgress,
+  McpGatewayFootprint,
   McpManagedServer,
 } from './client/mcp'
 export type {
@@ -170,7 +171,6 @@ export type {
   CrewmateExportPreview,
   MemberRosterRow,
   MemberActivityEntry,
-  MemberRecap,
   MemberGoals,
   MemberGoal,
   GoalKeyResult,
@@ -941,13 +941,40 @@ export interface RemoteFileContent {
   truncated: boolean
 }
 
+export interface RemoteEnvironmentHealth {
+  state: 'running' | 'stopped' | 'unavailable' | 'not_created'
+  workspace?: string
+  workdir?: string
+  error?: string
+  stats?: {
+    arch: string
+    cpus: number
+    load?: number[]
+    memory?: { total_bytes: number; available_bytes: number }
+    disk?: { total_bytes: number; free_bytes: number }
+    uptime_s?: number
+  }
+}
+
+/** `withheld`: the 'strict' agent sandbox lends no gateway login to remote sessions.
+ *  `unsupported`: a Windows gateway lends no git login to remote sessions yet. */
+export type GitLoginStatus = 'signed_in' | 'not_signed_in' | 'unchecked' | 'withheld' | 'unsupported'
+
 export interface SessionEnvironmentsCheck {
   coder: { ok: boolean; owner?: string; error?: string }
   profiles: { id: string; ok: boolean; error?: string }[]
+  /** Per saved Sprites profile: API token saved and accepted. Older gateways omit it. */
+  sprites?: { id: string; ok: boolean; error?: string }[]
+  /** Per saved boxd profile: CLI installed and signed in. Older gateways omit it. */
+  boxd?: { id: string; ok: boolean; error?: string }[]
+  /** Absent from a gateway that predates the git rows. */
+  git?: Record<string, GitLoginStatus>
 }
 
 export interface SessionEnvironmentWorkspace {
   workspace: string
+  /** Older gateways omit it; those rows are Coder workspaces. */
+  provider?: 'coder' | 'sprites' | 'boxd'
   slot: string
   /** The profile the chat is bound to; empty when unknown. */
   profile?: string
@@ -1295,10 +1322,9 @@ export interface KiroBonusCreditGrantPayload {
 export interface KiroUsagePayload {
   available?: boolean
   /**
-   * Why usage is unavailable when `available` is false (`api_key_auth`,
-   * `signin_required`, or `account_unproven` when the account is named but its
-   * reading could not be tied to it); absent when the gateway simply holds no
-   * reading.
+   * Why usage is unavailable when `available` is false (`signin_required`, or
+   * `account_unproven` when the account is named but its reading could not be
+   * tied to it); absent when the gateway simply holds no reading.
    */
   reason?: string
   credits_used?: number

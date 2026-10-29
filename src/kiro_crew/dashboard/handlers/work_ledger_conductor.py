@@ -110,6 +110,24 @@ def _count_recorded(action: str, item: Any, header: Any) -> None:
         work_metrics.record_dispatch("session")
 
 
+async def _count_crew_mode_run(state: DashboardState, key: str, item: Any) -> None:
+    """A Crew Mode chat's run finished: count how it ended and the steers it took.
+
+    Only for a board a Crew Mode root owns (``metrics.crew_mode.board_is_crew_mode``);
+    the steer count is the item's own ``steer`` events. Never raises.
+    """
+    from kiro_crew.metrics import crew_mode as crew_mode_metrics
+
+    if not crew_mode_metrics.board_is_crew_mode(state, key):
+        return
+    try:
+        events = await asyncio.to_thread(work_ledger.read_events, key, item.item_id)
+        steers = sum(1 for event in events if getattr(event, "kind", "") == "steer")
+    except Exception:
+        steers = None
+    crew_mode_metrics.record_run_finished(getattr(item, "state", None), steers)
+
+
 async def _record_conductor_write(
     state: DashboardState,
     key: str,
@@ -119,6 +137,7 @@ async def _record_conductor_write(
     *,
     operation: str,
     before_write: Callable[[], Awaitable[web.Response | None]] | None = None,
+    dispatch: bool = False,
 ) -> web.Response:
     """Probe, commit and record one conductor-owned write on *key*'s board.
 
@@ -127,7 +146,9 @@ async def _record_conductor_write(
     through it. *cleaned* is already validated and redacted. *operation* names
     the write in the audit trail. *before_write*, when given, runs under the
     board lock before the snapshot; a response from it stops the write and is
-    returned as is.
+    returned as is. *dispatch* marks a ``work_dispatch`` create: it never opens a
+    ledger, so it is judged under the board lock like every write on an existing
+    one, and refused ``no_ledger`` when the caller owns none.
     """
     # Refused BEFORE the ledger is even bootstrapped: the widest entry this action
     # can produce,
@@ -230,7 +251,13 @@ async def _record_conductor_write(
                 worker_session_key=folded_worker,
             )
         )
-        if action in ("goal", "create"):
+        if dispatch:
+            # Under the lock, so a purge cannot land between this read and the
+            # write; the store's own header check refuses one that lands later.
+            drefusal = await _refuse_dispatch_without_ledger(key)
+            if drefusal is not None:
+                return drefusal
+        elif action in ("goal", "create"):
             bootstrapped = await _bootstrap(key)
             if isinstance(bootstrapped, web.Response):
                 return bootstrapped
@@ -340,6 +367,8 @@ async def _record_conductor_write(
         # write whose record did not land is undone above, so this point is
         # reached once per write the route reports as successful.
         _count_recorded(action, item, header)
+        if action == "close" and item is not None:
+            await _count_crew_mode_run(state, key, item)
         crew_store = _crew_store(key) if action == "bind" else ""
         worker_slot = getattr(item, "worker_session_key", "") or ""
         if item is not None and crew_store and worker_slot:
@@ -412,6 +441,12 @@ async def api_work_ledger_record(request: web.Request) -> web.Response:
     if bad is not None:
         return bad
     assert body is not None
+    # ``work_dispatch`` marks its create; the field never reaches the schema, which
+    # is also the ``work_ledger_record`` tool's input schema. The mark can only add
+    # a refusal, so ANY presence of the key counts as one (rfc-work-dispatch.md,
+    # record-route amendment).
+    dispatch = DISPATCH_FIELD in body
+    body = {k: v for k, v in body.items() if k != DISPATCH_FIELD}
     try:
         cleaned = validate_tool_args(_drop_nulls(body), WORK_LEDGER_RECORD_SCHEMA)
     except ValidationError as exc:
@@ -444,8 +479,33 @@ async def api_work_ledger_record(request: web.Request) -> web.Response:
         if refusal is not None:
             return refusal
 
+    # A dispatch never opens a ledger: only ``kirocrew-work``'s own
+    # ``work_ledger_record`` does, so a session without that server is refused,
+    # whatever its backend.
     return await _record_conductor_write(
-        state, key, unit, action, cleaned, operation="work_ledger_record"
+        state, key, unit, action, cleaned, operation="work_ledger_record", dispatch=dispatch
+    )
+
+
+#: The body field ``work_dispatch`` marks its step-1 create with.
+DISPATCH_FIELD = "dispatch"
+
+
+async def _refuse_dispatch_without_ledger(key: str) -> web.Response | None:
+    """``no_ledger`` when *key* owns no ledger, else ``None``.
+
+    The one remedy is ``action=goal``: unlike ``_own_ledger``'s text, it does not
+    suggest ``action=create``, which ``work_dispatch`` would send marked again.
+    """
+    record = await asyncio.to_thread(work_ledger.read_conductor, key)
+    if record is not None:
+        return None
+    _audit(key, "work_dispatch", "denied", error=work_ledger.CODE_NO_LEDGER)
+    return _refuse_404(
+        work_ledger.CODE_NO_LEDGER,
+        "work_dispatch never opens a work ledger, and this session owns none. Open "
+        "it with work_ledger_record action=goal, then dispatch again. Nothing was "
+        "created.",
     )
 
 

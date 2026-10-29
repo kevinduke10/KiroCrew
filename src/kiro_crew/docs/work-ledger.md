@@ -28,8 +28,8 @@ Fewer than two qualifying items means one long session is the better shape, and
 a conductor would only add overhead.
 
 To start one, open a session on the **`kirocrew-conductor`** agent (see
-[Agents](agents.md) for the per-session, per-thread and per-cron selectors) and
-give it the goal. Its operating procedure ships as the `goal-conductor` skill.
+[Agents](agents.md) for the per-session, per-thread and per-cron selectors), which
+is what a Crew Mode chat runs on, and give it the goal. Its operating procedure ships as the `goal-conductor` skill.
 `kirocrew-ledger-conductor` is a deprecated alias of the same spec, kept for one
 release so an existing session or cron that names the old string keeps resolving.
 
@@ -46,7 +46,7 @@ An item is the unit of dispatch. It holds:
 | `verdict` | conductor | the acceptance evaluator's answer |
 | `fails` | conductor | how many acceptance attempts came back `fail` |
 | `state` | conductor | `open`, or terminal: `accepted` / `rejected` / `abandoned` |
-| `status` | worker | `progress` / `done` / `blocked` / `question` |
+| `status` | worker | `progress` / `done` / `blocked` / `question`, and `reply` while `work_ledger.remote_dispatch` is on |
 | `reason` | worker | on `blocked` / `question`, when only a person can move it: `approval` / `needs_human` |
 | `summary` | worker | the worker's own account, up to 500 chars |
 | `artifacts` | worker | pointers to what it produced |
@@ -84,8 +84,8 @@ wherever a conductor runs, rather than discovering the refusal from a worker tha
 cannot report.
 
 **The acceptance condition is named before dispatch, not after.** It is one of
-three kinds: `pr_checks` (a pull request's checks are all green), `file` (a path
-exists), or `human_approval` (you accept it — legitimate for a design review,
+four kinds: `pr_checks` (a pull request's checks are all green), `pr_merged` (a
+pull request has merged), `file` (a path exists), or `human_approval` (you accept it — legitimate for a design review,
 and never machine-evaluated). There is deliberately no "run this command" kind,
 so "the tests pass" is expressed as `pr_checks` on the pull request that carries
 the work, and CI's verdict is the one that counts.
@@ -155,7 +155,7 @@ root conductor learns it has no parent.
 
 ## `work_report` — what a worker writes
 
-One call, four statuses:
+One call, four statuses, and a fifth under a Feature Preview:
 
 | `status` | Meaning | Who acts next |
 |---|---|---|
@@ -163,6 +163,7 @@ One call, four statuses:
 | `blocked` | an external dependency stopped the work | the conductor clears or re-plans around it |
 | `question` | a decision the conductor owns is needed | the conductor answers |
 | `done` | the worker claims acceptance is met | the conductor verifies |
+| `reply` | the worker's answer to a follow-up the conductor sent it; needs no evidence and claims nothing finished. Accepted only while `work_ledger.remote_dispatch` is `true` (default `false`, read on every call); with it off, `reply` is refused as an unknown status. Like any report it replaces the item's last status, and like `done` it leaves the next move with the conductor, so it is never flagged `stale` | the conductor relays it |
 
 **`blocked` and `question` differ by who must act.** That is why they are
 separate values and not one "stuck". A build the worker does not control is
@@ -179,7 +180,8 @@ the goal popover says it is waiting on you. A worker's new report releases it;
 the conductor's own writes do not.
 
 **A report is the only thing that wakes a conductor.** `blocked`, `question`
-and `done` pull its `work-ledger` loop forward to within seconds. `progress`
+and `done` (and `reply`, while `work_ledger.remote_dispatch` is on) pull its
+`work-ledger` loop forward to within seconds. `progress`
 does not, which is what makes a pause cheap: a worker that stops to wait reports
 `progress` and its conductor spends no turn hearing it. A worker turn that ends
 having reported nothing wakes nobody, and neither does a worker's session
@@ -214,6 +216,17 @@ it says so, e.g. `{"tests": "not run: harness unavailable"}`.
 `artifacts`, `pr` and `status` are still refused when they
 are wrong or oversized: a truncated pointer is a broken pointer, while prose cut
 at the cap still reads.
+
+## A person's steer
+
+An item can carry a `steer` event: the time, actor `person`, and the person's own
+text, redacted and cut to 500 characters. It records that the person typed into
+the crew member (the worker session) that holds the item, from a Crew Mode chat.
+`work_ledger_read` shows it in the item's events. A steer moves no field: status,
+acceptance and verdict stay where they were, and acceptance stays the evaluator's.
+A person's steer outranks the conductor's decision. The ledger write
+(`work_ledger_worker.record_person_steer_result`) is here; the way to type into a
+crew member, which calls it, lands with the Crew panel.
 
 ## Why `done` is a claim
 

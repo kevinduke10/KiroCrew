@@ -106,6 +106,7 @@ class AcpClient:
     _session_mcp_inline_settings: dict[str, Any] | None
     _stdin_lock: asyncio.Lock
     _steering_waiter_map: dict[int, asyncio.Future[Any]]
+    _unanswered_steering_id_set: set[int]
     _windows_tree_cleanup_failed: bool
     if TYPE_CHECKING:
         _native_skill_projection: NativeSkillProjection | None
@@ -769,6 +770,11 @@ class AcpClient:
         return getattr(self, "_agent_version", "")
 
     @property
+    def initialize_result(self) -> dict:
+        """The agent's ``initialize`` result (``{}`` until then)."""
+        return getattr(self, "_initialize_result", {})
+
+    @property
     def spec_zero_tools(self) -> bool:
         """True once this session's CONSUMED projection confirms the spec's ``"tools": []``.
 
@@ -1413,6 +1419,7 @@ class AcpClient:
     steer = _client_turn_control.steer
     _steering_request_ready = _client_turn_control._steering_request_ready
     _steering_waiters = _client_turn_control._steering_waiters
+    _unanswered_steering_ids = _client_turn_control._unanswered_steering_ids
     _settle_steering_answer = _client_turn_control._settle_steering_answer
     _steer_via_steering_request = _client_turn_control._steer_via_steering_request
     _await_steering_answer = _client_turn_control._await_steering_answer
@@ -1442,6 +1449,9 @@ class AcpClient:
     _steering_turn_req: int | None = None
     # Whether the adapter advertised ``_meta.steering.supported`` at ``initialize``.
     _steering_advertised: bool = False
+    # The whole ``initialize`` result, set by the handshake; read through
+    # :attr:`initialize_result`, which answers ``{}`` before it.
+    _initialize_result: dict
     # True while the turn's dispatch is parked on a permission event its consumer
     # has not answered: the answer to a steer sent then would not be read until
     # the approval is, past the steer's own wait.

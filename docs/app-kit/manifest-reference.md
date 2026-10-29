@@ -238,11 +238,41 @@ each replaced field with its old and new value (a WARNING line ending in
 | `ui.sidebar.order` | number | `10` | Sort order within section |
 | `ui.overlays[].id` | string | | Overlay id; must match a bundled overlay component (see below) |
 | `ui.overlays[].replaces` | string | | Host overlay slot this app takes over while enabled |
+| `ui.loading.layout` | string | `"page"` | Placeholder shape shown while the bundle loads: `"page"`, `"rail"`, `"centered"` or `"split"` (see below) |
 | `contributes.sessionControls[].id` | string | | Control id, kebab-case; addressed as `<appName>:<id>` |
 | `contributes.sessionControls[].entryPoint` | string | | ESM bundle path for the control (relative to ui/) |
 | `contributes.sessionControls[].label` | string | | Accessible name, and the chip's tooltip |
 | `contributes.sessionControls[].icon` | string | | Icon name. Only `Shield`, `Bot`, `Search`, `Tag`, `Users`, `Zap`, `Star`, `Package`, `Cat`, `AudioLines` and `Mic` are rendered; any other name falls back to `Package`. Use `AudioLines` for a control that starts a voice conversation and `Mic` only for voice input: the composer's own dictation button already draws `Mic`, so a conversation chip with that glyph reads as a second dictation button |
 | `contributes.sessionControls[].statusPath` | string | | Optional backend route reporting per-session chip state (see below) |
+
+### `ui.loading` — Loading Placeholder Shape
+
+While your bundle downloads, the dashboard shows a placeholder. Nothing appears
+for the first 300 ms, so a fast load (the usual case on a local gateway) shows no
+placeholder at all. After that, the placeholder takes the shape you declare, so
+your page doesn't jump when it mounts:
+
+```json
+{
+  "ui": {
+    "entry": "dist/index.mjs",
+    "loading": { "layout": "rail" }
+  }
+}
+```
+
+| `layout` | Shape |
+|----------|-------|
+| `"page"` | Title bar, subtitle bar and content rows. The default |
+| `"rail"` | A 232px left column of list rows beside the main content |
+| `"centered"` | One narrow card in the middle of the page, e.g. a composer or a sign-in |
+| `"split"` | Two panes side by side, e.g. a list and a detail view |
+
+The shapes are drawn by the dashboard from its own skeleton pieces. You pick a
+name; you can't supply markup or styles. The match is exact: a missing or `null`
+`loading`, a non-object, a non-string `layout`, or an unknown name (including a
+different case, like `"Rail"`) all fall back to `"page"`. An invalid value is
+not an install error; it is dropped.
 
 ### `ui.overlays` — Replacing a Host Overlay Surface
 
@@ -916,7 +946,7 @@ packages at all.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `permissions.api` | string[] | Allowed API path prefixes |
+| `permissions.api` | string[] | Allowed API path prefixes. `/api/member-records/*` is the one that lets the app put a value on a Dashboard page of ANY crewmate it names by slug; there is no per-crewmate form of the grant ([api-reference](api-reference.md#member-records)) |
 | `permissions.events` | string[] | Allowed WebSocket event types |
 | `permissions.mcpTools` | string[] | Allowed MCP tool names |
 | `permissions.storage` | boolean | Can use app-scoped storage |
@@ -1256,7 +1286,10 @@ hints a desktop launch needs:
   is the list): shell and locale basics such as `HOME` and `PATH`, the XDG
   directories (including `XDG_RUNTIME_DIR`), toolchain roots (Java, Node,
   Python, Conda, Gradle/Maven), the git SSH overrides, and the Windows
-  equivalents of the basics.
+  equivalents of the basics. Proxy and CA-bundle variables (`HTTPS_PROXY`,
+  `NO_PROXY`, `SSL_CERT_FILE`, ...) are not on it: only the gateway's own
+  `git` clone, fetch and pull of app and registry repositories receive them,
+  because a proxy URL can carry a password.
 - **Removed again before the spawn** (`sandbox.scrub_env`): of the allowlisted
   names, the SSH agent socket `SSH_AUTH_SOCK`. The install and build commands
   run git against the owner's own repositories and need it; a launcher does

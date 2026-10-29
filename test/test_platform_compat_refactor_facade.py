@@ -158,6 +158,7 @@ _MOVED: dict[str, tuple[str, ...]] = {
         _darwin_libproc_fd_bound _darwin_libproc_fd_handle _darwin_peer_is_loopback
         darwin_established_tcp_count _darwin_libc_sysctl _darwin_libc_sysctl_loaded
         _darwin_libc_sysctl_lock _darwin_sysctl_handle darwin_process_argv
+        _darwin_tb_frequency
         darwin_process_environ DarwinKinfoProc _darwin_kinfo_proc_parse
         _darwin_kinfo_size_mismatch_logged _darwin_kinfo_query darwin_kinfo_proc
         darwin_pid_is_zombie darwin_pgroup_members _DARWIN_BSDINFO_SIZE _DARWIN_OFF_START_TVSEC
@@ -192,7 +193,7 @@ _MOVED: dict[str, tuple[str, ...]] = {
         pinned_dir_flags PINNED_TREE_MAX_DEPTH PinnedDirectory pinned_directory
         _win_open_without_following open_file_no_reparse _WIN_FILE_LIST_DIRECTORY
         _WIN_OPEN_ALWAYS _WIN_FILE_ATTRIBUTE_TAG_INFO win_fd_is_link _win_reparse_refused
-        win_open_no_reparse open_create_no_reparse
+        win_open_no_reparse open_create_no_reparse names_a_verbatim_only_file
         """.split()),
     "kiro_crew.platform_compat_files": tuple("""
         _RENAME_NOREPLACE_FN _RENAME_NOREPLACE_FLAG _SYS_RENAMEAT2_BY_MACHINE
@@ -263,7 +264,7 @@ _MOVED: dict[str, tuple[str, ...]] = {
         _open_process_termination_handle open_process_termination_handle
         duplicate_asyncio_process_handle _windows_lineage_matches_lifetimes
         _windows_process_query_diagnostic _windows_descendant_failure_details
-        _windows_process_query_creation _windows_foreign_descendant_pids
+        _windows_process_query_creation _windows_foreign_descendant_pids _windows_is_older_orphan
         descendant_termination_handles close_process_handle descendant_termination_handles_async
         _JOB_OBJECT_LIMIT_ACTIVE_PROCESS _JOB_OBJECT_LIMIT_JOB_MEMORY
         _JOBOBJECT_EXTENDED_LIMIT_INFORMATION_CLASS apply_job_limits _TH32CS_SNAPTHREAD

@@ -16,6 +16,7 @@ above POLICY ∩ PROFILE. Stateless.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -285,6 +286,23 @@ def _server_of(ref: str) -> str:
     if not ref.startswith("@"):
         return ""
     return ref[1:].split("/", 1)[0]
+
+
+def covered_by(ref: str, selectors: Iterable[str]) -> bool:
+    """Whether a strictly broader selector grants everything *ref* selects.
+
+    Grant/approval decisions use ``mcp_refs.entry_reaches``; this is deduplication.
+    """
+    refs = set(selectors)
+    return (ref != "*" and "*" in refs) or (
+        ref.startswith("@") and "/" in ref and f"@{_server_of(ref)}" in refs
+    )
+
+
+def collapse_selectors(refs: Iterable[str]) -> list[str]:
+    """Keep unique selectors in order, omitting those covered by a broader one."""
+    unique = dict.fromkeys(refs)
+    return [ref for ref in unique if not covered_by(ref, unique)]
 
 
 def _strings(value: Any) -> list[str]:
@@ -725,6 +743,28 @@ def cron_worker_execution(execution: Any, config: Any = None) -> Any:
         return None
     # The hand-off's own spelling (``session_create``): a template selection on
     # the worker under its own name, the member id kept.
+    return execution.with_template(MATE_WORKER_AGENT, MATE_WORKER_AGENT)
+
+
+def spawn_worker_execution(execution: Any) -> Any:
+    """The worker execution a sub-agent selected as a crewmate runs, else ``None``.
+
+    A ``spawn_run(crew=...)`` (or ``target_member``) with no ``agent`` resolves
+    the crewmate to a ``member`` selection on the agent its chat runs on. For a
+    crewmate that owns its file that is the conductor, which hands work off
+    rather than doing it. The run is work, so it runs on that crewmate's worker
+    instead, member, store, mode and app kept: the record shape a hand-off and a
+    scheduled turn give the worker (:func:`cron_worker_execution`). Answered
+    from the record alone, so it reads no file and is safe on the event loop.
+    ``None`` for any other record.
+    """
+    if (
+        execution is None
+        or getattr(execution, "selection_kind", "") != "member"
+        or not getattr(execution, "member_id", None)
+        or getattr(execution, "template_id", "") != MATE_CONDUCTOR_AGENT
+    ):
+        return None
     return execution.with_template(MATE_WORKER_AGENT, MATE_WORKER_AGENT)
 
 

@@ -17,7 +17,7 @@ import MarkdownOutlineRail from './MarkdownToc'
 import { usePersistedBool } from '../hooks/usePersistedBool'
 import { useDiffSplit } from '../hooks/useDiffSplit'
 import { countLines } from './FileChangeChips'
-import { findBestOccurrence } from '../hooks/useMarkdownCommentHighlights'
+import { findBestOccurrence, findLooseSpan, indexPage, rangesForSpan, unselectableSpans, type PageIndex, type TextSpan } from '../hooks/useMarkdownCommentHighlights'
 import { detectFileType, BinaryFileCard } from './FileRenderers'
 import { ContentRenderer, MD_EXTS, extOf, langFor, wrapCode } from './ContentRenderer'
 import { downloadFileName } from '../utils/fileReadUrl'
@@ -47,6 +47,8 @@ interface SelectionInfo {
   column?: number
   /** Offset in the preview's text; absent for text the offset space does not hold. */
   startOffset?: number
+  /** See `InlineComment.renderedQuote`. */
+  renderedQuote?: string
   /** Selected inside a code block (see `InlineComment.inCode`). */
   inCode?: boolean
   /** Where in the preview's code blocks (see `InlineComment.codePosition`). */
@@ -328,7 +330,7 @@ export default memo(forwardRef<MarkdownPanelHandle, Props>(function MarkdownPane
   // while the DOM selection was still live (focus in the input collapses it).
   // A ref, not state: it is read only by the submit handler, and nothing renders
   // from it.
-  const pendingAnchorRef = useRef<{ anchor: string; line?: number; column?: number; startOffset?: number; inCode?: boolean; codePosition?: number } | null>(null)
+  const pendingAnchorRef = useRef<{ anchor: string; line?: number; column?: number; startOffset?: number; renderedQuote?: string; inCode?: boolean; codePosition?: number } | null>(null)
   // Whether the annotation box is open — read by the panel's document-level
   // Escape handler so it yields the key to the box instead of closing the panel.
   const composerOpenRef = useRef(false)
@@ -538,22 +540,33 @@ export default memo(forwardRef<MarkdownPanelHandle, Props>(function MarkdownPane
     }
     // Try live selection first
     if (sel && !sel.isCollapsed && sel.anchorNode && root.contains(sel.anchorNode)) {
-      const raw = sel.toString()
+      const range = sel.getRangeAt(0)
+      // Firefox gives a Selection one range per table cell when cells are
+      // selected as cells (Ctrl+drag). The offset and line below are range 0's,
+      // so the quote is too, as `SelectionToolbar` already takes it for its
+      // composer: all the ranges' text together describes cells no one offset
+      // places.
+      const raw = sel.rangeCount > 1 ? range.toString() : sel.toString()
       if (raw.trim()) {
-        const range = sel.getRangeAt(0)
         if (root.contains(range.startContainer) && root.contains(range.endContainer)) {
           const anchor = raw.trim()
           const rect = range.getBoundingClientRect()
           const coords = isMarkdown
             ? (resolveSourcePos(range, root, displayContent) ?? findCoords(displayContent, raw) ?? findCoords(displayContent, anchor))
             : (findCoords(content, raw) ?? findCoords(content, anchor))
-          // Compute the rendered-text character offset so repeated occurrences
-          // of the same anchor text can be disambiguated at highlight time.
+          // The offset and the text to find come from `anchorFromRange`, which
+          // reads `Range.toString()`: the space the highlighter searches.
+          // `anchor` stays the text the reader saw, with the tab or newline the
+          // browser puts between table cells, rows and blocks, because that is
+          // what the comment list shows and the agent is sent.
           let startOffset: number | undefined
+          let renderedQuote: string | undefined
           try {
-            startOffset = anchorFromRange(root, range)?.startOffset
-          } catch { /* leave undefined */ }
-          return { anchor, rect, range: range.cloneRange(), line: coords?.line, column: coords?.column, startOffset }
+            const ra = anchorFromRange(root, range)
+            startOffset = ra?.startOffset
+            if (ra && ra.quote !== anchor) renderedQuote = ra.quote
+          } catch { /* leave both undefined */ }
+          return { anchor, rect, range: range.cloneRange(), line: coords?.line, column: coords?.column, startOffset, renderedQuote }
         }
       }
     }
@@ -618,7 +631,7 @@ export default memo(forwardRef<MarkdownPanelHandle, Props>(function MarkdownPane
     if (info) {
       if (info.range) applyHighlightMarks(info.range)
       else clearHighlightMarks()
-      pendingAnchorRef.current = { anchor: info.anchor, line: info.line, column: info.column, startOffset: info.startOffset, inCode: info.inCode, codePosition: info.codePosition }
+      pendingAnchorRef.current = { anchor: info.anchor, line: info.line, column: info.column, startOffset: info.startOffset, renderedQuote: info.renderedQuote, inCode: info.inCode, codePosition: info.codePosition }
     } else {
       // No DOM selection to map — anchor on the text the toolbar captured.
       clearHighlightMarks()
@@ -645,7 +658,7 @@ export default memo(forwardRef<MarkdownPanelHandle, Props>(function MarkdownPane
 
   const handleComposerSubmit = useCallback((comment: string, text: string) => {
     const info = pendingAnchorRef.current ?? { anchor: text }
-    const newComment: InlineComment = { id: Math.random().toString(36).substring(2), anchor: info.anchor, text: comment, line: info.line, column: info.column, startOffset: info.startOffset, inCode: info.inCode, codePosition: info.codePosition }
+    const newComment: InlineComment = { id: Math.random().toString(36).substring(2), anchor: info.anchor, text: comment, line: info.line, column: info.column, startOffset: info.startOffset, ...(info.renderedQuote ? { renderedQuote: info.renderedQuote } : {}), inCode: info.inCode, codePosition: info.codePosition }
     setComments(prev => [...prev, newComment])
     composerOpenRef.current = false
     composerDraftRef.current = false
@@ -894,15 +907,13 @@ export default memo(forwardRef<MarkdownPanelHandle, Props>(function MarkdownPane
         textNodes.push({ node: node as Text, start: fullText.length })
         fullText += (node as Text).nodeValue ?? ''
       }
-      const locate = (off: number): { node: Text; offset: number } | null => {
-        for (const tn of textNodes) {
-          const len = tn.node.nodeValue?.length ?? 0
-          if (off <= tn.start + len) return { node: tn.node, offset: off - tn.start }
-        }
-        return null
-      }
       const ranges: Range[] = []
       const hits: { range: Range; comment: InlineComment }[] = []
+      // Both built at most once per pass, and only when a comment reaches them.
+      let unselectable: TextSpan[] | undefined
+      const skipped = () => (unselectable ??= unselectableSpans(textRoot, textNodes))
+      let pageIndex: PageIndex | undefined
+      const page = () => (pageIndex ??= indexPage(fullText, skipped()))
       for (const comment of comments) {
         // An image comment's anchor is the image's alt text, which is not text
         // in the document; its box is drawn by the image's overlay.
@@ -913,18 +924,22 @@ export default memo(forwardRef<MarkdownPanelHandle, Props>(function MarkdownPane
           if (r) { ranges.push(r); hits.push({ range: r, comment }) }
           continue
         }
-        const bestIdx = findBestOccurrence(fullText, comment.anchor, comment.startOffset)
-        if (bestIdx < 0) continue
-        const s = locate(bestIdx)
-        const e = locate(bestIdx + comment.anchor.length)
-        if (!s || !e) continue
-        try {
-          const r = document.createRange()
-          r.setStart(s.node, s.offset)
-          r.setEnd(e.node, e.offset)
+        const quote = comment.renderedQuote || comment.anchor
+        const bestIdx = findBestOccurrence(fullText, quote, comment.startOffset)
+        // A comment with no `renderedQuote` (saved before it existed, or made on
+        // the toolbar's fallback path) quotes the browser's selection string,
+        // which an exact search misses once it crosses cells, rows or
+        // paragraphs (see `findLooseSpan`).
+        const span = bestIdx >= 0
+          ? { start: bestIdx, end: bestIdx + quote.length }
+          : comment.renderedQuote ? null : findLooseSpan(page(), comment.anchor, comment.startOffset)
+        if (!span) continue
+        // A span that runs out of a table into the next paragraph covers the
+        // table's Copy buttons, which the reader couldn't select: paint around them.
+        for (const r of rangesForSpan({ text: fullText, nodes: textNodes }, span.start, span.end, skipped())) {
           ranges.push(r)
           hits.push({ range: r, comment })
-        } catch { /* skip */ }
+        }
       }
       activeHits = hits
       if (ranges.length === 0) { clear(); return }

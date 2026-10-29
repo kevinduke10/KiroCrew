@@ -103,6 +103,14 @@ _LIVE_TARGET_STAGING_LEAF: str = "live-target-staging"
 #: needs no backend carve-out to hand the directory back to a sandboxed app.
 _AUTH_STORE_STAGING_LEAF: str = "auth-store-staging"
 
+#: The mediated-secret request directory (``secrets_mediation.provenance.
+#: REQUEST_POLICY_DIRNAME``): the owner-signed authorization policy and its
+#: authorize lock. Hidden as a WHOLE directory and
+#: precreated before every spawn, so every name inside it -- present, future, and the
+#: temps a publication renames over them -- is covered, and a rename inside it never
+#: touches the mount point the mask sits on.
+_SECRET_REQUEST_POLICY_LEAF: str = "secret-request-policy"
+
 #: The md-notebook builtin's name, and its own state files under the crew data home.
 #: Named so the mask, the backend carve-out that lifts it, and the materialiser that
 #: gives it a mount target cannot drift apart on a literal.
@@ -383,6 +391,12 @@ _CREW_HIDDEN_LEAVES: tuple[str, ...] = (
     # ``isdir`` guard would otherwise skip the mask and let an agent read the key or
     # plant an endpoint.
     "web-push",
+    # The mediated-secret request directory: per Custom secret, the exact https origin
+    # the agent may reach with it, owner-signed. Read ONLY by the host gateway and the
+    # owner CLI; the sandboxed tool forwards over loopback and never touches it.
+    # Masked, not read-only, like ``.vault``: an agent that could read the policy
+    # learns the allowlist, and one that could write it could plant entries.
+    _SECRET_REQUEST_POLICY_LEAF,
     # No producer and no consumer left in the tree; masked so a backup restore that
     # resurrects a stale file cannot make it readable either.
     ".kiro_cli_binary_trust.json",
@@ -697,6 +711,13 @@ _CREW_READONLY_LEAVES: tuple[str, ...] = (
     # Gateway resolve-once artifacts choose the entry point substituted for an
     # approved npm launcher. The installer runs in the unsandboxed gateway.
     "mcp/resolved",
+    # The per-template MCP additions record (``template_mcp_additions``): the servers
+    # the user approved for a template on a change card, merged into that template's
+    # spec on the next rebuild. A sandboxed writer could add a server it chose and
+    # have it launched. Read-only, not hidden: no sandboxed reader needs it, but it
+    # holds only launch entries the agent specs carry too. Every writer runs in the
+    # gateway or the CLI, outside the sandbox.
+    "template-mcp-additions",
     # This gateway's stable random identity (``gateway_identity.GATEWAY_ID_FILE``). The
     # Remote Crew cycle guard compares it to refuse a chain that loops back on itself,
     # so a sandboxed writer would choose whether a loop is detected. The read path
@@ -804,6 +825,9 @@ _CREW_READONLY_TARGETS: list[str] = _crew_home_entries(_CREW_READONLY_LEAVES)
 _CREW_CHILD_WITHHELD_LEAVES: tuple[str, ...] = (
     # The per-listener gateway credential (``run/gateway-<port>.secret``).
     "run",
+    # Approved per-template MCP server entries: an entry's ``env`` or ``headers`` can
+    # carry a credential, and no foreign child reads the record.
+    "template-mcp-additions",
     # The SEL trust root and the audit key inside it.
     "trust",
     "sel_hmac.key",

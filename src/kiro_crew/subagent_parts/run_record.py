@@ -144,6 +144,11 @@ class SubagentInfo:
     # ``_exec_started is None`` it also tells the reaper which of the two a
     # parked run is sitting on.
     _awaiting_approval: bool = False
+    # True while the run's AgentSpawn and UserPromptSubmit hooks run, before
+    # its first prompt is sent; exempt from first-prompt silence and idle-stall.
+    _prompt_hooks_running: bool = False
+    # Seconds this attempt spent in those hooks, kept off the startup clock.
+    _prompt_hooks_secs: float = 0.0
     # The in-flight tool hand-off rule, shared with ``AcpSessionHandle`` via
     # ``InFlightToolTracker``. The sub-agent tracks its calls by toolCallId: a
     # native child's call (``sub_session_id`` set) is judged on arrival (so a
@@ -255,6 +260,17 @@ class SubagentInfo:
         return self._reap_reason in _NEUTRAL_REAP_REASONS
 
     @property
+    def run_agent(self) -> str:
+        """The agent this run executes on, for a card's agent chip.
+
+        ``agent`` is only the name the spawn passed, so it is empty for a
+        ``crew=`` or inherited spawn. Those runs execute on the template their
+        execution record names, the same fallback the spawn frame and the
+        run's ``state.json`` use. ``""`` when neither is known.
+        """
+        return self.agent or str(getattr(self.execution_context, "template_id", "") or "")
+
+    @property
     def _inflight_tool(self) -> Any:
         """The :class:`ToolCallState` a stall verdict is read against (``None``
         when no tool is in flight).
@@ -313,6 +329,19 @@ class SubagentInfo:
     # returns, so this is the only sign the parent was never told, and the run
     # loop writes no ``delivered`` tombstone while it is set.
     _report_undelivered: bool = False
+    # True when the shutdown ended this run and left it for the next start: its
+    # parent has a dashboard tab, so the arm that ended it wrote no tombstone.
+    # The report skips ``_on_done`` and marks nothing delivered, so held wave
+    # siblings and owed reports stay visible to the next start's orphan sweep,
+    # which announces the run in that tab, with a resume hint while its
+    # conversation survives. A report made now could only queue in a slot that
+    # does not survive the restart or start a turn the shutdown refuses.
+    _left_for_next_start: bool = False
+    # True once ``create_agent_folder`` wrote this run's ``state.json``: the file
+    # the next start's orphan sweep finds runs by. Kept in memory so the shutdown
+    # can decide which runs to leave to that sweep without reading the disk on
+    # the event loop.
+    _folder_seeded: bool = False
     # True when the gateway QUEUED this completion's injection because the
     # parent's slot was busy. Delivery is not consumption: the announce sits in
     # the slot queue until a turn drains it, and that wait is bounded only by the
@@ -395,6 +424,13 @@ class SubagentInfo:
     include_memory: bool = True
     include_lessons: bool = True
     include_project: bool = True
+    # The parent's folder steering directories, resolved when each run of this
+    # child starts (``SubagentManager._parent_steering_dirs``) and handed to
+    # ``build_message`` so the child follows the guides its parent follows. Kept
+    # on the record so a child this run spawns inherits the same set. In memory
+    # only: a retried, drained or continued run resolves it again from its
+    # parent, the same way a chat re-resolves its folder on every rebuild.
+    steering_dirs: tuple[str, ...] = ()
     # The memory silo this child reads and writes, or "" for the global store.
     # Carried rather than derived: `agent` above holds a kiro-cli modeId, a
     # namespace disjoint from cfg.agents, so resolving a store from it answers

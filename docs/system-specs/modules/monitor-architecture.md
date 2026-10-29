@@ -251,8 +251,9 @@ person's own queued text (#22747).
 The wake reaches the steer through `session_deliver.deliver`, the session-side entry
 point a non-human sender calls with its origin (`automation`, `cron`, `app`). The
 sender never picks idle vs running or a row role: `origin_row` maps the origin to
-its row, an idle slot gets that row and a turn, and a running slot gets the steer
-(an automation wake) or a queued card (a cron notification, an app message). A
+its row, an idle slot queues a cron notification or app message as a card that the
+queue drain starts at once (the drain writes the row), and a running slot gets the
+steer (an automation wake) or the same queued card. A
 script cron's result (`_deliver_script_result`) and a cron's `send_message` to its
 origin session (`api_send_message`), both with `evict_oldest` so a full live queue
 drops its oldest cron notification (never another kind of entry), and an MCP App's
@@ -400,7 +401,18 @@ release it. `monitor_inspect` reports the hold as
 `paused_for_approval` on the loop reading.
 
 A tool's “requested” response proves receipt only. The gateway's applied notice
-and a subsequent `monitor_inspect` prove activation. Unmatched directive delivery
+and a subsequent `monitor_inspect` prove activation. For crew/member sessions,
+self-arm provenance is positive: the directive consumer vouches for a
+`monitor_start`, `monitor_watch` or `monitor_update` only when the turn carries a
+mark its dispatcher set, either the authenticated-human origin
+(`_directive_user_origin`) or the delivered wake of a loop bound to this slot
+(`_directive_self_wake`). A turn's `user` actor is a fallback for attribution and
+never authority, so a dispatcher that names no producer grants nothing: cron, app,
+native sub-agent, peer-session, restored and untagged dispatcher turns keep the
+outside-arm 409. The human-origin mark rides a steer until it is consumed or
+requeued, so a person's steer that the turn ends before consuming drains with it.
+Successful arms use the existing self-arm trust record and SEL events; no
+gateway-patrol trust kind exists. Unmatched directive delivery
 produces an application-failure notice appended to the tool's own result text; its
 agent instruction names `monitor_inspect` only for the monitor tools and stays
 tool-neutral for every other directive tool, as does the turn-end notice for a parked
@@ -1270,11 +1282,12 @@ their primary use, which a prose-matching refusal would break. A preference that
 cannot misfire is worth more here than an enforcement that can.
 
 The descriptor is not the only prose that states the choice, and the key moves
-only the descriptor. `config/prompt.md` carries the same rule in its own words
-("Prefer bounded `monitor_watch` when typed provider facts decide the whole
-objective"), and that sentence is true in both positions, so it is left alone
-rather than made flag-aware. The reason is reach, not effort: a prompt file is one
-of many agent prompts, while the descriptor is assembled for every session
+only the descriptor. The `kirocrew-dev/babysit` skill, which `config/prompt.md`
+points every monitoring request at, carries the same rule in its own words ("Use a
+structured monitor only when its typed provider observes every fact needed to
+decide the objective"), and that sentence is true in both positions, so it is left
+alone rather than made flag-aware. The reason is reach, not effort: a skill is read
+only by the agents that load it, while the descriptor is assembled for every session
 whatever prompt it runs, so the descriptor is the only copy a single read can
 move for all of them. An installation that turns the key on therefore gets the
 default restated on the tool list, not rewritten in every prompt.

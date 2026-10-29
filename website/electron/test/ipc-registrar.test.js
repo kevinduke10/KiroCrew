@@ -31,6 +31,8 @@ const SHELL_HANDLES = [
   "browser:set-inactive",
   "browser:set-overlay",
   "browser:track-session",
+  "close-action:get",
+  "close-action:set",
   "crash-reports:get",
   "crash-reports:reveal",
   "dashboard:can-pick-folder",
@@ -38,6 +40,8 @@ const SHELL_HANDLES = [
   "dashboard:pick-folder",
   "external-terminal:detect",
   "external-terminal:open",
+  "first-run:can-use-remote-crew",
+  "first-run:use-remote-crew",
   "global-hotkey:get",
   "local-gateway:get",
   "local-gateway:set",
@@ -183,6 +187,9 @@ function harness({
   wslGatewayLocal = true,
   primaryPortOwner = "kirocrew",
   isCurrentBundleGateway = true,
+  // What the supervisor answers for first-run setup's remote-crew exit.
+  canSwitchToRemoteCrew = true,
+  switchOutcome = "switching",
   crashScan,
   revealThrows = false,
   openPathResult = "",
@@ -328,6 +335,13 @@ function harness({
     diagnostics: {
       memorySample: recordWindow("diagnostics.memorySample"),
     },
+    closeAction: {
+      get: recordWindow("closeAction.get", "background"),
+      set: (...args) => {
+        windowCalls.push(["closeAction.set", ...args]);
+        return args[0] === "quit" ? "quit" : "background";
+      },
+    },
   };
   for (const name of [
     "open",
@@ -363,6 +377,8 @@ function harness({
       "isCurrentBundleGateway",
       Promise.resolve(isCurrentBundleGateway),
     ),
+    canSwitchToRemoteCrew: recordGateway("canSwitchToRemoteCrew", canSwitchToRemoteCrew),
+    switchToRemoteCrew: recordGateway("switchToRemoteCrew", Promise.resolve(switchOutcome)),
   };
   const logs = [];
   const runWslDetection = (...args) => {
@@ -487,13 +503,13 @@ test("registerShell owns the exact shell channel set and is idempotent", () => {
 
   assert.deepEqual([...h.handlers.keys()].sort(), SHELL_HANDLES);
   assert.deepEqual([...h.listeners.keys()].sort(), SHELL_LISTENERS);
-  assert.equal(h.handlers.size + h.listeners.size, 40);
+  assert.equal(h.handlers.size + h.listeners.size, 44);
 
   // boot-complete is a further non-update host channel, but it is deliberately
   // gateway-owned and scoped to a single connecting WebContents. Registering it
   // globally here would weaken its sender check and leak listeners.
   assert.match(GATEWAY_SOURCE, /ipcMain\.on\("boot-complete", onComplete\)/);
-  assert.equal(h.handlers.size + h.listeners.size + 1, 41);
+  assert.equal(h.handlers.size + h.listeners.size + 1, 45);
   assert.equal(h.handlers.has("boot-complete"), false);
   assert.equal(h.listeners.has("boot-complete"), false);
 
@@ -1119,6 +1135,63 @@ test("dashboard:can-pick-folder answers true on the local dashboard without open
   }
 });
 
+// First-run setup's remote-crew exit stops the gateway this app started, so
+// both channels take the same three-gate check as the folder pick, and a
+// refused sender never reaches the supervisor.
+test("first-run:use-remote-crew is refused outside the local dashboard and never reaches the supervisor", async () => {
+  for (const [label, options, url] of PICK_REJECTIONS) {
+    const h = harness(options);
+    h.registrar.registerShell();
+    await assert.rejects(
+      () => h.handlers.get("first-run:use-remote-crew")(wslEvent(url)),
+      (error) => {
+        assert.equal(
+          error && error.message,
+          "first-run:use-remote-crew is restricted to the local dashboard",
+          label,
+        );
+        return true;
+      },
+    );
+    assert.equal(
+      h.gatewayCalls.filter(([name]) => name === "switchToRemoteCrew").length,
+      0,
+      `${label}: a rejected sender must not start a switch`,
+    );
+  }
+});
+
+test("first-run:can-use-remote-crew answers false wherever the switch is refused", async () => {
+  for (const [label, options, url] of PICK_REJECTIONS) {
+    const h = harness(options);
+    h.registrar.registerShell();
+    assert.equal(await h.handlers.get("first-run:can-use-remote-crew")(wslEvent(url)), false, label);
+    assert.equal(
+      h.gatewayCalls.filter(([name]) => name === "canSwitchToRemoteCrew").length,
+      0,
+      `${label}: a rejected sender is answered without asking the supervisor`,
+    );
+  }
+});
+
+test("first-run remote-crew channels pass the sender's own window to the supervisor", async () => {
+  const owner = { fake: "main-window" };
+  for (const can of [true, false]) {
+    const h = harness({ wslOwner: owner, canSwitchToRemoteCrew: can, switchOutcome: "cancelled" });
+    h.registrar.registerShell();
+    assert.equal(await h.handlers.get("first-run:can-use-remote-crew")(wslEvent()), can);
+    assert.equal(await h.handlers.get("first-run:use-remote-crew")(wslEvent()), "cancelled");
+    assert.deepEqual(lastCall(h.gatewayCalls, "canSwitchToRemoteCrew"), ["canSwitchToRemoteCrew", owner]);
+    assert.deepEqual(lastCall(h.gatewayCalls, "switchToRemoteCrew"), ["switchToRemoteCrew", owner]);
+  }
+});
+
+test("first-run:can-use-remote-crew is a strict boolean", async () => {
+  const h = harness({ canSwitchToRemoteCrew: "yes" });
+  h.registrar.registerShell();
+  assert.equal(await h.handlers.get("first-run:can-use-remote-crew")(wslEvent()), false);
+});
+
 test("dashboard:pick-folder returns null when the dialog yields no absolute folder", async () => {
   for (const [label, dialogResult] of [
     ["cancelled", { canceled: true, filePaths: [] }],
@@ -1641,4 +1714,108 @@ test("pane:clear-http-cache is gated to the local dashboard sender", async () =>
     /restricted to the local dashboard/,
   );
   assert.equal(purges.length, 0);
+});
+
+// ── close-action:get / close-action:set (#12204) ────────────────────────────
+//
+// The setting governs only the MAIN window's close button, so both channels
+// answer only that window's own top frame on its dashboard origin, including a
+// main window on a configured REMOTE gateway. Connection windows never do.
+
+const CLOSE_ACTION_CHANNELS = [
+  ["close-action:get", []],
+  ["close-action:set", ["quit"]],
+];
+const MAIN_WINDOW_ONLY = (channel) => ({
+  message: `${channel} is restricted to the main window's dashboard`,
+});
+
+// A harness whose main window is `main`, with the sender mapped to `owner`.
+function closeActionHarness({ mainBackendUrl = "http://localhost:5476", owner = "main", ...rest } = {}) {
+  const h = harness(rest);
+  const main = { fake: "main-window", _mcBackendUrl: mainBackendUrl };
+  const other = { fake: "connection-window", _mcBackendUrl: "http://localhost:6100" };
+  h.windows.getMainWindow = () => main;
+  h.windows.windowForWebContents = () => (owner === "main" ? main : owner === "other" ? other : null);
+  h.registrar.registerShell();
+  return h;
+}
+
+// A top-frame sender on `url`.
+function mainFrameEvent(url = "http://localhost:5476/settings") {
+  const frame = { url };
+  return { sender: { id: "main-view", mainFrame: frame }, senderFrame: frame };
+}
+
+function assertCloseActionRefused(h, channel) {
+  assert.equal(
+    h.windowCalls.some(([name]) => name.startsWith("closeAction.")),
+    false,
+    `${channel}: a refused sender must not read or write the setting`,
+  );
+}
+
+test("close-action channels answer the main window's dashboard, including on a remote gateway", async () => {
+  for (const [mainBackendUrl, wslGatewayLocal, primaryPortOwner] of [
+    ["http://localhost:5476", true, "kirocrew"],
+    // A main window connected to a configured remote host through a tunnel:
+    // the three-gate check would refuse it, this one must not.
+    ["http://localhost:5476", false, "foreign"],
+  ]) {
+    const h = closeActionHarness({ mainBackendUrl, wslGatewayLocal, primaryPortOwner });
+    const url = `${mainBackendUrl}/settings`;
+    assert.equal(await h.handlers.get("close-action:get")(mainFrameEvent(url)), "background");
+    assert.equal(await h.handlers.get("close-action:set")(mainFrameEvent(url), "quit"), "quit");
+    assert.deepEqual(lastCall(h.windowCalls, "closeAction.set"), ["closeAction.set", "quit"]);
+    // The registrar never writes the store itself: the window facade does.
+    assert.equal(h.store.writes.some(([key]) => key === "closeAction"), false);
+  }
+});
+
+test("close-action channels refuse every sender that is not the main window", async () => {
+  for (const [channel, args] of CLOSE_ACTION_CHANNELS) {
+    for (const owner of ["other", null]) {
+      const h = closeActionHarness({ owner });
+      await assert.rejects(() => h.handlers.get(channel)(mainFrameEvent(), ...args), MAIN_WINDOW_ONLY(channel));
+      assertCloseActionRefused(h, channel);
+    }
+  }
+});
+
+test("close-action channels refuse a subframe of the main window", async () => {
+  for (const [channel, args] of CLOSE_ACTION_CHANNELS) {
+    const h = closeActionHarness();
+    const event = mainFrameEvent();
+    event.senderFrame = { url: "http://localhost:5476/embedded" }; // not sender.mainFrame
+    await assert.rejects(() => h.handlers.get(channel)(event, ...args), MAIN_WINDOW_ONLY(channel));
+    assertCloseActionRefused(h, channel);
+  }
+});
+
+test("close-action channels refuse a main window navigated off its dashboard", async () => {
+  for (const [channel, args] of CLOSE_ACTION_CHANNELS) {
+    for (const url of ["https://remote.example/settings", "http://localhost:6100/settings", "about:blank", ""]) {
+      const h = closeActionHarness();
+      await assert.rejects(() => h.handlers.get(channel)(mainFrameEvent(url), ...args), MAIN_WINDOW_ONLY(channel));
+      assertCloseActionRefused(h, channel);
+    }
+  }
+});
+
+test("close-action channels refuse when there is no main window", async () => {
+  for (const [channel, args] of CLOSE_ACTION_CHANNELS) {
+    const h = closeActionHarness();
+    h.windows.getMainWindow = () => null;
+    await assert.rejects(() => h.handlers.get(channel)(mainFrameEvent(), ...args), MAIN_WINDOW_ONLY(channel));
+    assertCloseActionRefused(h, channel);
+  }
+});
+
+test("close-action channels never run the port-owner probe", async () => {
+  const h = closeActionHarness();
+  let probes = 0;
+  h.gateway.probePrimaryPortOwner = () => { probes += 1; return Promise.resolve("kirocrew"); };
+  await h.handlers.get("close-action:get")(mainFrameEvent());
+  await h.handlers.get("close-action:set")(mainFrameEvent(), "quit");
+  assert.equal(probes, 0, "the check is synchronous so no write waits on a probe");
 });

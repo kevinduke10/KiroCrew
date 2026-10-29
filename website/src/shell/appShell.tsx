@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAppSelector, useAppDispatch, useAppStore } from '../store'
 import { fetchSlots, sseStatus, setEnabledAppIds } from '../store/dashboardSlice'
+import { setActiveId } from '../store/instancesSlice'
 import { selectAllSurfacesAttention, surfaceLabel, surfaceMachineValue } from '../surfaces/registry'
 import { switchSlot, selectActiveSlotProject, stageToMainComposer } from '../store/chatSlice'
 import { setNavIntentHandler as setArtifactNavIntentHandler } from '../utils/artifactPopout'
@@ -38,7 +39,7 @@ import { useMayLeaveForNavigation } from '../components/NavigationLeaveGuard'
 import { useMotionValue, useTransform } from 'framer-motion'
 import { useDrawerSwipe, animateDrawer, registerDrawerTargets, takeOverDrawer, safeAreaLeft } from '../hooks/useDrawerSwipe'
 import { useTopbarCollapse } from '../lib/useTopbarCollapse'
-import { subscribeNativeNavigate, useMacFullscreen } from './platform/electronBridge'
+import { showNativeDevTools, subscribeNativeNavigate, useMacFullscreen } from './platform/electronBridge'
 import { useNativeHistoryStep } from './platform/nativeHistoryStep'
 import { labelCurrentRouteEntry } from '../lib/routeHistoryLabels'
 import AppIcon from '../components/AppIcon'
@@ -63,7 +64,6 @@ import { appNavTarget } from '../appNav'
 import { useGlobalApprovalCount, useRailBadges } from './nav/railBadges'
 import { resolveSlotOverlays, type SlotOwners } from '../apps/overlaySlots'
 import { isChatRoute, useRouteActiveModel } from './nav/routeActive'
-import { useDeveloperMode } from './nav/developerMode'
 import { appPathname } from '../lib/basePath'
 import { slotRowByKey } from '../store/slotIndex'
 
@@ -334,7 +334,9 @@ export function useAppShell() {
   // keyboard hides, so the header stays in view and no gap appears below.
   useKeyboardViewportReset()
   useNotificationSound()
-  const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem('mc-nav') === '1')
+  // The rail starts collapsed until the user expands it: only a stored '0'
+  // (the user's own expand) opens it on load.
+  const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem('mc-nav') !== '0')
   const navCollapsedRef = useRef(navCollapsed)
   navCollapsedRef.current = navCollapsed
   // Preview expand mode from the Web Preview tab collapses the left nav
@@ -700,12 +702,11 @@ export function useAppShell() {
   const metrics = useMetricsReadout(isMobile, updateAvailable, topbarLevels.right)
   const { capsuleCollapsed, setCapsuleCollapsed, capsuleLayoutPulse, pulseCapsuleLayout, sysMetrics, metricsProbeRef, metricsGroupRef } = metrics
 
-  const { devMode, devPageSeen } = useDeveloperMode(location.pathname)
-  // Guide facts the shell knows: the two gates a guide pauses on (it never
-  // flips either), the phone menu's scope, and whether this is the Sessions
-  // page (whose own drawer replaces the menu button there).
-  useGuideGate('developer_mode', devMode)
+  // Guide facts the shell knows: the gate a guide pauses on (it never flips
+  // it), the phone menu's scope, and whether this is the Sessions page (whose
+  // own drawer replaces the menu button there).
   useGuideGate('terminal_enabled', terminalEnabled)
+  useEffect(() => { showNativeDevTools() }, [])
   useGuidePredicate('not_on_sessions_page', location.pathname !== '/sessions')
   // Whether the rail draws Connect your phone at all: the pairing guide's blocker otherwise.
   useGuidePredicate('phone_connect_available', hasRenderableMobileConnect)
@@ -724,6 +725,10 @@ export function useAppShell() {
     return subscribeNativeNavigate(path => {
       const slotKey = chatDeepLinkSlot(path)
       if (slotKey) {
+        // The session lives in the local Crew. Over a Remote Crew pane, bring
+        // the local Crew forward first (as the notification banner does), so
+        // the leave prompt and the switched session are both on screen.
+        if (appStore.getState().instances?.activeId != null) dispatch(setActiveId(null))
         applyNavIntentInMain(
           // `path` is deliberately dropped in favour of the bare route: a
           // NavIntent carries no query string, and ChatPage writes `?sid=` back
@@ -742,7 +747,7 @@ export function useAppShell() {
       if (!mayLeaveForNavigation()) return
       navigate(path)
     })
-  }, [navigate, dispatch, mayLeaveForNavigation])
+  }, [navigate, dispatch, mayLeaveForNavigation, appStore])
   // A mouse's Back/Forward buttons on macOS, relayed by the shell as a swipe.
   useNativeHistoryStep(isMobile)
 
@@ -901,7 +906,7 @@ export function useAppShell() {
     toggleAppsExpanded, slotOwners, appBadges, discoverBadges, railAppBadges, railAppRunStates, shortcutsOpen,
     setShortcutsOpen, toggleShortcutsModal, commandPalette, agentSwitchNotice, kiroUsageOpen, setKiroUsageOpen,
     kiroUsageState, usageSegmentHidden, kiroAccountEntry, metrics, capsuleCollapsed, setCapsuleCollapsed,
-    capsuleLayoutPulse, pulseCapsuleLayout, sysMetrics, metricsProbeRef, metricsGroupRef, devMode, devPageSeen,
+    capsuleLayoutPulse, pulseCapsuleLayout, sysMetrics, metricsProbeRef, metricsGroupRef,
     subscribeLogs, subscribeSubagents, forceReconnect, updateFlow, updating, setUpdating, showUpdateModal,
     setShowUpdateModal, showChangelog, updateError, setUpdateError, startupVideo, reportProblemOpen,
     setReportProblemOpen, requestFeature, toggleNav, effectiveCollapsed, closeMobileNav, activePath,

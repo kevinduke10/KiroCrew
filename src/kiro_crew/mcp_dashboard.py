@@ -738,8 +738,10 @@ from typing import TYPE_CHECKING  # noqa: E402
 from kiro_crew import _facade_mirror  # noqa: E402
 from kiro_crew.mcp_dashboard_caller_scope import (  # noqa: E402, F401
     _DELEGATED_CALLER_PREFIXES,
+    CREW_MODE_FOLDER_NOTE,
     SERVER_NAME,
     _caller_app_scope,
+    _caller_in_crew_tree,
     _is_messaging_caller,
     _own_chat_slot,
     _refuse_channel_board_write,
@@ -793,11 +795,18 @@ from kiro_crew.mcp_dashboard_references import (  # noqa: E402, F401
 )
 from kiro_crew.mcp_dashboard_session_runs import (  # noqa: E402, F401
     _PROFILE_COPY_NOTE,
+    _WORK_RECORD_ROUTE,
     GENERATE_TITLE_TIMEOUT_SECS,
     SESSION_STATUS_READ_TIMEOUT_SECS,
     _closed_at_display,
     _create_refusal_remedy,
+    _create_session,
+    _Created,
+    _dispatch_cleanup,
+    _dispatch_failed,
+    _dispatch_outcome,
     _pending_approval_phrase,
+    _RefusalCodes,
     _render_session_summary,
     _resolve_folder_for_new_session,
     _run_session_adopt,
@@ -822,6 +831,7 @@ from kiro_crew.mcp_dashboard_session_runs import (  # noqa: E402, F401
     _run_session_status,
     _run_session_stop,
     _run_session_summary,
+    _run_work_dispatch,
     _summary_time,
     _worker_capabilities_line,
 )
@@ -972,6 +982,7 @@ _sys.modules[__name__].__class__ = _facade_mirror.MirroredModule
 __all__ = sorted(n for n in set(globals()) | set(_EXPORTS) if not n.startswith("_"))
 
 if TYPE_CHECKING:  # the project names this module imported that only its owners read
+    from kiro_crew import crew_mode  # noqa: F401
     from kiro_crew.conductor_patrol import reply_line  # noqa: F401
     from kiro_crew.config.loader import KiroCrewConfig  # noqa: F401
     from kiro_crew.config.sections import (  # noqa: F401

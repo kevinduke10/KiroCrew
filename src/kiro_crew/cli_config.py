@@ -24,7 +24,7 @@ from kiro_crew.config.loader import (
     workspace_dir_from_entry,
 )
 from kiro_crew.config.resolution import _SECTION_KEYS_EMITTED_ELSEWHERE
-from kiro_crew.config.sections import _migrate_workspaces
+from kiro_crew.config.sections import _migrate_workspaces, _sanitize_bot_name
 from kiro_crew.config.superseded_defaults import (
     acked_superseded,
     adopt_coerced_keys,
@@ -118,6 +118,37 @@ def _refuse_missing_workspace_dirs(data: dict, current: dict) -> dict:
                 f"workspace {name!r}: dir {entry.dir!r} is not an existing directory"
             )
     return data
+
+
+def _warn_if_bot_name_altered(key: str, parsed: object) -> None:
+    """Warn when a stored ``agent.bot_name`` will load differently from the typed value.
+
+    ``config set`` stores and echoes the raw value, but the loader runs it
+    through ``_sanitize_bot_name`` before any session reads it, dropping emoji,
+    symbols and braces and capping the length.  The echoed ``✅`` line is the
+    typed value, so without this the user learns nothing when the loaded name
+    will differ — including the case where every character is dropped and the
+    default name is used instead.  A non-text value never gets here: the
+    declared-type check refuses it first.  The warning reports the loaded
+    spelling; the write itself still succeeded, so this is advice, not a refusal.
+    """
+    if key != "agent.bot_name" or not isinstance(parsed, str):
+        return
+    loaded = _sanitize_bot_name(parsed)
+    if loaded == parsed:
+        return
+    if loaded:
+        print(
+            f"⚠️  {key} will load as {json.dumps(loaded)}, not {json.dumps(parsed)} — "
+            "the loader drops characters it cannot use in a name.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"⚠️  {key} will load as empty — the loader drops every character of "
+            f"{json.dumps(parsed)}, so the default name is used instead.",
+            file=sys.stderr,
+        )
 
 
 def _config_cmd(args: argparse.Namespace) -> None:
@@ -330,7 +361,12 @@ def _run_config_cmd(args: argparse.Namespace) -> None:
                 # on_corrupt="reset" handles the corrupt case inside the same
                 # lock hold: the mutate callback receives {} and writes the
                 # single key from scratch. No second critical section needed.
+                dropped: list[str] = []
+
                 def _mutate_local_overlay(_existing: dict) -> dict:
+                    # Read under the same lock as the write, so the keys named
+                    # are the ones this write really removed.
+                    dropped[:] = _overlay_keys_dropped(_dict_get(_existing, key), parsed, key)
                     _dict_set_create(_existing, key, parsed)
                     return _existing
 
@@ -352,6 +388,9 @@ def _run_config_cmd(args: argparse.Namespace) -> None:
                     resources=f"{key}={json.dumps(parsed)}",
                 )
                 print(f"✅ {key} = {json.dumps(parsed)} (saved to config.local.json)")
+                if dropped:
+                    _print_dropped_overlay_keys(key, dropped)
+                _warn_if_bot_name_altered(key, parsed)
             else:
 
                 def _mutate_base(existing: dict) -> dict:
@@ -391,6 +430,7 @@ def _run_config_cmd(args: argparse.Namespace) -> None:
                     resources=f"{key}={json.dumps(parsed)}",
                 )
                 print(f"✅ {key} = {json.dumps(parsed)}")
+                _warn_if_bot_name_altered(key, parsed)
     elif action == "edit":
 
         p = config_path()
@@ -780,6 +820,44 @@ def _refuse_emitted_elsewhere_value(key: str, section: str, name: str, parsed: o
             f"❌ {key}: {parsed!r} is not one of the selectable values: {allowed}", file=sys.stderr
         )
         sys.exit(1)
+
+
+def _overlay_keys_dropped(old: object, new: object, prefix: str) -> list[str]:
+    """Dotted keys under *prefix* that writing *new* over *old* removes.
+
+    Only a section (a dict) can lose keys: a whole-object write keeps what the
+    object names, recursively, and drops the rest; a scalar written over a
+    section drops all of it. Nothing is dropped when *old* is not a section.
+    """
+    if not isinstance(old, dict):
+        return []
+    if not isinstance(new, dict):
+        return [f"{prefix}.{k}" for k in old]
+    out: list[str] = []
+    for k, v in old.items():
+        if k in new:
+            out.extend(_overlay_keys_dropped(v, new[k], f"{prefix}.{k}"))
+        else:
+            out.append(f"{prefix}.{k}")
+    return out
+
+
+def _print_dropped_overlay_keys(key: str, dropped: list[str]) -> None:
+    """Name the overlay keys a whole-object ``config set --local`` removed.
+
+    The replace is kept (it is the only CLI way to remove a pinned key); the
+    hint only makes it visible and names the form that keeps siblings.
+    """
+    print(
+        f"⚠️  {key} was replaced in config.local.json, so it no longer pins: "
+        f"{', '.join(dropped)}",
+        file=sys.stderr,
+    )
+    print(
+        f"   To change one key and keep the rest, set it by its dotted name: "
+        f"kirocrew config set --local {key}.<name> <value>",
+        file=sys.stderr,
+    )
 
 
 def _dict_set_create(d: dict, key: str, value: object) -> None:

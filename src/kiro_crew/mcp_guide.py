@@ -224,8 +224,8 @@ def _tool_definitions() -> list[dict[str, Any]]:
             "description": (
                 "List the change-card kinds you can propose (settings, schedules, "
                 "crewmates, capabilities, templates, MCP servers, connections, "
-                "secrets, app trust, denied commands), each with its params schema "
-                "and which fields the user may edit on the card."
+                "secrets, app trust, denied commands, saved workflows), each with "
+                "its params schema and which fields the user may edit on the card."
             ),
             "inputSchema": {"type": "object", "properties": {}},
         },
@@ -409,7 +409,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "offscreen, hidden, unmounted, disabled, ambiguous, unknown, with "
                 "observed_at), or not_observed when their tab did not answer; it "
                 "never reads page text. A result may also carry blocker: "
-                "gate_off (a setting such as developer mode is off; setting_id "
+                "gate_off (a setting such as a feature preview is off; setting_id "
                 "names it, or is null when no setting turns it on), "
                 "needs_selection (the user must first open one item, e.g. a "
                 "crewmate, named in selection), "

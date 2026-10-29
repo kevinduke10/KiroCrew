@@ -28,7 +28,12 @@ if TYPE_CHECKING:
         _REPLAYS_COMPLETION_KEY,
         TURN_ACTOR_META_KEY,
     )
+    from kiro_crew.dashboard.chat_turn.recipient import (
+        MIRROR_ECHO_OWED_META_KEY,
+        _mirror_echo_owed,
+    )
     from kiro_crew.dashboard.chat_turn.recovery import _session_stop_generation_for
+    from kiro_crew.dashboard.chat_turn.regenerate_swap import carry_regenerate_target
     from kiro_crew.dashboard.session_directive_apply import DirectiveOutcome
 
 
@@ -130,6 +135,10 @@ def _queue_recovery(
         # without these lists the replayed transcript row falls back to a
         # whitespace-bounded path and truncates spaced attachment names.
         _recovery_meta.update(attachment_meta(_current_replay_message.get("meta")))
+    if payload == RecoveryPayload.ORIGINAL and _mirror_echo_owed(turn):
+        # The person's own words, replayed because the turn died before its
+        # mirror echo point: the replay owes that echo (``_prompt_typed_in_dashboard``).
+        _recovery_meta[MIRROR_ECHO_OWED_META_KEY] = True
     _recovery_qid = slot.queue_insert(
         index,
         content,
@@ -154,6 +163,10 @@ def _queue_recovery(
         directive_user_origin=_directive_user_origin,
         directive_channel_origin=_directive_channel_origin,
     )
+    # A recovery a Regenerate turn queues before it has any reply (a replay of
+    # its message or a continuation) is the same Regenerate's next attempt: it
+    # settles the previous reply, not this turn.
+    carry_regenerate_target(slot, _recovery_qid)
     if content == turn.message and _turn_is_completion:
         # A verbatim requeue still replays the completion; runner-written
         # text queued after it (a continuation, a retry prompt) does not.
