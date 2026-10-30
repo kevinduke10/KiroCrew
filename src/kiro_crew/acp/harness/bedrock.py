@@ -1,4 +1,4 @@
-"""Launch Crew's bundled Bedrock runtime without an external agent executable."""
+"""Launch the repository-local Bedrock runtime without an external agent executable."""
 
 from __future__ import annotations
 
@@ -16,14 +16,16 @@ class BedrockLaunch(ProcessAdapter):
         self.model = "auto"
 
     async def resolve_spawn(self, ctx: SpawnContext) -> SpawnPlan:
-        missing = [name for name in ("boto3", "mcp") if find_spec(name) is None]
+        missing = [name for name in ("kirocrew_custom", "boto3", "mcp") if find_spec(name) is None]
         if missing:
-            raise RuntimeError("Install the Bedrock runtime with pip install 'kirocrew[bedrock]'")
+            raise RuntimeError(
+                "Install the Bedrock runtime with pip install -e './custom[bedrock]'"
+            )
         self.model = ctx.model or "auto"
         if ctx.session is not None:
             await ctx.session._prepare_session_mcp()
         return SpawnPlan(
-            argv=isolated_python_argv("-P", "-m", "kiro_crew.bedrock_runtime"),
+            argv=isolated_python_argv("-P", "-m", "kirocrew_custom.bedrock"),
             spawn_label="Bedrock",
             stderr_label="Bedrock",
         )

@@ -184,16 +184,16 @@ class BackendInstallState:
 
 
 def _probe_bedrock() -> BackendInstallState:
-    """The bundled runtime needs Python libraries, never an agent executable."""
+    """The repository-local runtime needs Python packages, never an agent executable."""
     from importlib.util import find_spec
 
-    missing = tuple(name for name in ("boto3", "mcp") if find_spec(name) is None)
+    missing = tuple(name for name in ("kirocrew_custom", "boto3", "mcp") if find_spec(name) is None)
     return BackendInstallState(
         ACP_BACKEND_BEDROCK,
         _policy_id(ACP_BACKEND_BEDROCK),
         MISSING if missing else INSTALLED,
         missing,
-        "pip install 'kirocrew[bedrock]'" if missing else "",
+        "pip install -e './custom[bedrock]'" if missing else "",
     )
 
 

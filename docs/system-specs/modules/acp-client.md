@@ -1,10 +1,10 @@
 # ACP Client Module
 
-## Bundled Bedrock transport
+## Repo-local Bedrock transport
 
 `acp/harness/bedrock.py` launches the current Python interpreter with
-`-P -m kiro_crew.bedrock_runtime`, using Crew's interpreter isolation helper.
-The optional `boto3` and `mcp` packages are checked without connecting to AWS.
+`-P -m kirocrew_custom.bedrock`, using Crew's interpreter isolation helper.
+The optional `kirocrew_custom`, `boto3` and `mcp` packages are checked without connecting to AWS.
 ACP version 1 carries one session per process. The session receives its exact
 projected MCP array and the explicit model pin. `initialize` and `session/new`
 do not construct an AWS client; the first prompt does.

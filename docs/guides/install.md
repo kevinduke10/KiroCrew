@@ -46,7 +46,7 @@ bundled, so end users of those artifacts need neither Node nor a compiler.
 
 ### Native Bedrock runtime
 
-Install `pip install 'kirocrew[bedrock]'` to use Bedrock directly without an
+Install `pip install -e './custom[bedrock]'` to use Bedrock directly without an
 agent CLI. Set `agent.acp_backend` to `bedrock` and choose an explicit model ID or
 inference profile. See [Bedrock configuration](../../src/kiro_crew/docs/configuration.md#bedrock-without-an-agent-cli)
 for credential resolution and supported features. Installing and testing the

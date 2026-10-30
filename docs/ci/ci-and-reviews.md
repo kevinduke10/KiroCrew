@@ -43,23 +43,18 @@ the same SHA is still the outage, so wait instead of rerunning in a loop. Any
 other `Set up job` failure is read from its annotations before anything is
 rerun.
 
-## Spec tracker validation
+## Custom layer validation
 
-The **Spec Tracker** workflow (`.github/workflows/spec-tracker.yml`) validates
-feature plans and their checkpoint ledger with the standard-library-only
-`scripts/spec_tracker.py check --base <base>` command.
+The **Custom Layer** workflow (`.github/workflows/spec-tracker.yml`) runs the
+[repo-local custom checks](../../custom/README.md). It installs the core and
+custom package together and explicitly collects `custom/tests/` with the root
+pytest configuration so the repository's host-isolation fixtures apply.
 
-- **Trigger:** Pull requests touching the tracker/plans, its workflow contract,
-  checker/tests, agent instructions or this workflow; also manual dispatch.
-- **Outcome:** PASS when plan structure and acceptance/status coherence hold and
-  existing feature IDs, plan paths and history-event prefixes are preserved against
-  the merge base. BLOCK on a malformed record, incomplete verified feature or edited
-  checkpoint history. It does not prove product behavior or claim deployment.
-
-The workflow uses read-only repository permissions and performs no model calls or
-credential lookup. The local focused tests live in `test/test_spec_tracker.py`.
-The [spec-driven workflow](../system-specs/common/spec-driven-development.md)
-defines how contributors update the records.
+- **Trigger:** Pull requests touching `custom/`, its workflow, core Python sources,
+  dependency manifests or agent instructions; also manual dispatch.
+- **Outcome:** PASS when the tracker, checkpoint history and custom/core integration
+  tests pass. BLOCK on malformed records, rewritten history or compatibility failures.
+  Local checks do not claim a live AWS request or remote CI execution.
 
 ## Shape
 

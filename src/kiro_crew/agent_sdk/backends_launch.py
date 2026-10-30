@@ -284,7 +284,7 @@ ACP_BACKENDS_SELF_SERVED_ACP: FrozenSet[str] = frozenset(ACP_BACKEND_LAUNCH)
 #: and the claude, codex and pi adapters are Node entry scripts whose basenames live
 #: with their resolvers in the ACP layer, which this module must not import.
 ACP_BACKEND_PROCESS_NAMES: Mapping[str, str] = {
-    ACP_BACKEND_BEDROCK: "kiro_crew.bedrock_runtime",
+    ACP_BACKEND_BEDROCK: "kirocrew_custom.bedrock",
     ACP_BACKEND_KIRO: "kiro-cli",
     ACP_BACKEND_KAS: "kiro-cli",
     ACP_BACKEND_CLAUDE: "claude-agent-acp",

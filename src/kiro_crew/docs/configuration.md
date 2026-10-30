@@ -11,10 +11,11 @@ and its sibling section modules), which the gateway serves at
 
 ## Bedrock without an agent CLI
 
-Install the optional runtime in the Python environment running Kiro Crew:
+From this fork's repository root, install the custom package in the Python
+environment running Kiro Crew:
 
 ```bash
-pip install 'kirocrew[bedrock]'
+pip install -e './custom[bedrock]'
 kirocrew config set agent.acp_backend bedrock
 kirocrew config set agent.model '<your Bedrock model ID or inference profile ARN>'
 ```
