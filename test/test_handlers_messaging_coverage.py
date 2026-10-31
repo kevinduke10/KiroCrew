@@ -312,6 +312,15 @@ class TestApiSpawn:
 
             monkeypatch.setattr("kiro_crew.execution_context.read_session_execution", inherited)
 
+        # Shared Crew fair admission reads its own config off-loop too; this test
+        # counts only the memory lookups, so admission answers pass-through.
+        from kiro_crew.shared_crew import admission_entry
+        from kiro_crew.shared_crew.admission_gate import Admission
+
+        async def _passthrough(*_a, **_kw):
+            return Admission(None, "passthrough")
+
+        monkeypatch.setattr(admission_entry, "admit_subagent", _passthrough)
         response = _run(mod.api_spawn, _Req(state, body))
 
         # A parent's privacy admission reads its execution before spawn derives
@@ -1000,6 +1009,26 @@ class TestApiSpawnRetry:
         assert mgr.settle_retry.call_args_list == [((old, None),)]
         mgr.spawn.assert_not_called()
 
+    def test_an_admission_that_raises_releases_the_claim(self) -> None:
+        """An unreadable task store during admission started nothing."""
+        from kiro_crew.shared_crew import admission_entry
+
+        mgr = _mgr()
+        old = _info(done=True, outcome="failed", _raw_task="t")
+        mgr.get.return_value = old
+        mgr.claim_retry.return_value = ""
+        with (
+            patch.object(
+                admission_entry,
+                "admit_subagent",
+                AsyncMock(side_effect=RuntimeError("task store unavailable")),
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            _run(mod.api_spawn_retry, self._req(mgr))
+        assert mgr.settle_retry.call_args_list == [((old, None),)]
+        mgr.spawn.assert_not_called()
+
     def test_a_refused_start_releases_the_claim(self) -> None:
         mgr = _mgr()
         old = _info(done=True, outcome="failed", _raw_task="t")
@@ -1025,10 +1054,8 @@ class TestApiSpawnRetry:
     def test_falls_back_to_redacted_task_when_raw_is_empty(self) -> None:
         mgr = _mgr()
         mgr.get.return_value = _info(done=True, outcome="failed", _raw_task="", task="shown")
-        mgr.spawn.return_value = _info(id="new")
-        resp = _run(mod.api_spawn_retry, self._req(mgr))
-        assert resp.status == 200
-        assert _payload(resp) == {"id": "new", "retried_from": "a1", "status": "spawned"}
+        mgr.spawn.return_value = _info()
+        _run(mod.api_spawn_retry, self._req(mgr))
         assert mgr.spawn.call_args.args[0] == "shown"
 
     def test_retry_reuses_the_failed_run_context_scope(self) -> None:

@@ -184,8 +184,8 @@ class SessionConfig:
         metadata=_meta(
             "Watchdog RSS Limit (MiB)",
             "Recycle a session when its process tree resident memory exceeds "
-            "this many MiB. 0 disables (the default); the internal background "
-            "runtime still recycles at 1536 MiB. Busy sessions (turn in "
+            "this many MiB (default 4096). 0 disables; the internal background "
+            "runtime recycles at 1536 MiB, or at this value when it is lower. Busy sessions (turn in "
             "flight) are never recycled.",
         ),
     )
@@ -270,6 +270,17 @@ class KiroCrewAgentConfig:
             "decides as usual (its own crew pin if it runs as a mate, else "
             "agent.reasoning_effort, else the model default). Set, one of the five "
             "standard levels. An explicit effort on the call wins.",
+        ),
+    )
+    acp_backend: str = field(
+        default="",
+        metadata=_meta(
+            "Harness",
+            "Agent harness for this crewmate's own chat and the worker sessions it "
+            "opens, spelled as agent.acp_backend (kiro, kas, claude, ...). Empty "
+            "inherits agent.member_acp_backend. A harness this gateway cannot start "
+            "refuses the session with the reason instead of running another one. "
+            "The model and worker_model pins are judged against this harness.",
         ),
     )
     dynamic_capabilities: bool = field(

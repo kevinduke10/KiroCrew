@@ -164,13 +164,29 @@ Semantics, from `runner._RunContext.agent`:
 
 `label`, `phase`, `schema`, `model`, `agent`, `effort`, `cwd`, `session` and
 `nudge` are all passed to the injected `agent_fn` in one `opts` dict. The shipped
-adapters read `session`, `agent`, `model` and `cwd`; `label` and `phase` are
-consumed by the runner for the event stream; `schema` is consumed by the runner.
+adapters read `session`, `agent`, `model`, `cwd` and `effort`; `label` and `phase`
+are consumed by the runner for the event stream; `schema` is consumed by the runner.
 
-> Open question: `effort` and the per-call `nudge` dict are part of the frozen
-> signature and reach `opts`, but neither shipped `agent_fn`
-> (`agent_exec.build_agent_fn`, `agent_pool.build_pooled_agent_fn`) reads them, so
-> today they have no effect. Either wire them or document them as reserved.
+`effort` is the step's reasoning effort. Both shipped adapters
+(`agent_exec.build_agent_fn`, `agent_pool.build_pooled_agent_fn`) hand it to
+`get_or_create` as `reasoning_effort_override`, the same override `spawn_run`
+passes, so it outranks the crew pin and the configured default. It must be one of
+`kiro_crew.effort.EFFORT_LEVELS`; any other value fails the step
+(`WorkflowEffortInvalid`) before a session is allocated. Unset (`None` or `""`)
+passes nothing and the session resolves its effort as before. Effort applies
+when the step's session starts: the pooled adapter keys its warm sub-pools on
+`(agent, model, cwd, effort)` so a reused worker always runs at the effort the
+call asked for, and a named `session=` chain keeps the effort its first step
+started it with. A warm reuse's `new_conversation()` re-applies the model but
+not the effort, and a harness that takes effort as a per-session config option
+(KAS, Codex) pushes it only at cold start, so the worker pushes its effort again
+through `provider.change_effort` after each cheap reset; a push that raises takes
+the hard-reset fallback, which cold-starts with the override. There is no
+run-level effort default.
+
+> Open question: the per-call `nudge` dict is part of the frozen signature and
+> reaches `opts`, but neither shipped `agent_fn` reads it, so today it has no
+> effect. Either wire it or document it as reserved.
 
 ### Scheduling combinators
 
@@ -284,6 +300,9 @@ class Budget(Protocol):
 `would_exceed(cost=0)` and `charge(cost)`:
 
 - `remaining()` is `math.inf` when `total is None`, else `max(0, total - spent)`.
+  A script that returns or records that value gets `null` in the run record
+  (see the strict-JSON note under `registry.py`), and the authoring prompt tells the
+  model not to emit it raw.
 - `charge(cost)` raises `BudgetExceeded` the moment cumulative spend **reaches**
   the ceiling (the comparison is `>=`, so a run cannot exceed the target), and
   clamps the stored counter to `total` so it never reads above it. The message
@@ -372,6 +391,12 @@ untouched. On top of those verbs the port adds only:
   (`caller_fenced=True`), any other caller bound to a private store is refused
   `member_scope_denied`, and an unreadable execution record is refused
   `member_identity_unavailable`.
+- **A send reaches only sessions the launcher opened.** `send_to_session` always
+  passes `caller_fenced=True`, whatever the scope gate decided, so even an owner
+  launcher's run reaches only the sessions the launching session created (or,
+  as for any fenced `send`, was handed) and is refused `not_creator` on any
+  other, the person's own tabs included. One approval of a run therefore cannot
+  start turns in sessions the run did not start, trust-mode ones included.
 - **A mode stays or drops, never rises.** `set_session_mode` accepts `normal`,
   `trust_reads` and `trust`, ranked in that order, and refuses
   `mode_raise_refused` for a mode above the target session's current mode or
@@ -397,9 +422,10 @@ untouched. On top of those verbs the port adds only:
   applied through the auto-tag writer (`chat_auto_tag.apply_label_tag`) without
   claiming the auto-tag once-flag, so the session's first message still gets its
   project tag.
-- **`open_session` spends the run's agent cap.** It increments the run's
-  `AgentCounter` and refuses with `BudgetExceeded` at the budget ceiling, exactly
-  as `ctx.agent()` does.
+- **`open_session` and `send_to_session` spend the run's agent cap.** Each call
+  increments the run's `AgentCounter` and refuses with `BudgetExceeded` at the
+  budget ceiling, exactly as `ctx.agent()` does, so a script cannot loop turns
+  without bound.
 - **A rerun that replays earlier calls cannot open or message sessions.** On a
   run with `replay_before > 0` (`rerun@N` with N > 0, or a restart that replays
   finished calls), `open_session` and `send_to_session` raise a `RuntimeError`
@@ -516,7 +542,9 @@ Static rejections:
   (`ast.literal_eval`; both `META = {...}` and `META: dict = {...}` are accepted),
   and an `async def workflow(ctx)` entrypoint whose first parameter is named `ctx`
   (positional-only `def workflow(ctx, /)` is fine). A plain `def workflow` is
-  rejected with a specific error.
+  rejected with a specific error. The runner calls `workflow(ctx)` only, so any
+  further parameter, positional or keyword-only, must have a default
+  (`*args` / `**kwargs` are fine); one without is refused by name.
 - **Size:** `MAX_SCRIPT_BYTES` = 262144 bytes of UTF-8.
 - **Undefined names** (`_check_undefined_names`, via `symtable`): any referenced
   global that is not a safe builtin, not `ctx`, and not bound at module level is
@@ -699,6 +727,16 @@ records: all mutation happens on the gateway event loop, so no locks are needed,
 and snapshots handed to callers are plain JSON-serializable dicts, never the live
 objects (in particular never the `asyncio.Task`).
 
+Strict JSON, not just Python-serializable: `kiro_crew.strict_json.json_portable` replaces
+every non-finite float (`inf`, `-inf`, `nan`) with `None` where script or agent
+values enter the record -- `EventStream._emit` event data, the terminal
+`result`, per-call `agent_results`, and the terminal merge of the runner's
+returned per-call results -- and on `from_store_json`, so a run stored
+by an older build loads clean. Python's `json` writes those floats as the bare
+tokens `Infinity`/`NaN` and reads them back, but the dashboard's `JSON.parse`
+rejects the whole snapshot ("Could not load snapshot") while the run itself
+succeeds. `None` matches what a browser's `JSON.stringify` writes.
+
 `RunHandle` holds `run_id`, `name`, `status`, the growing `events` list, `result`,
 `error`, `author`, `session_key`, `source`, `args`, `agent_results`,
 `agent_errors`, exact saved-definition provenance, optional `derived_from`
@@ -858,6 +896,11 @@ Properties that matter:
   `redact_exfiltration_urls` then `redact_credentials`, recursively. Mapping keys
   are retained as-is by `WorkflowRunStore`; the HTTP and chat response redactors
   independently cover both keys and values on the way out.
+- **Strict JSON:** a non-finite float (`inf`, `-inf`, `nan`) is written as `null`,
+  both to disk and in every `/api/workflows` response, because a bare `Infinity`
+  token fails the browser's `JSON.parse`. A script reaches one through
+  `ctx.budget.remaining()` on a run without a budget. A run file that already holds
+  a bare `Infinity` still loads, and the response redactor nulls it.
 - **Injective paths:** a `run_id` is sanitized to alphanumerics plus `_`/`-` so a
   malformed id cannot traverse out of the runs dir. Because sanitizing is lossy,
   when it changes the id a 12-hex-char sha256 prefix of the original is appended,
@@ -1350,7 +1393,7 @@ never spawns `kiro-cli` in tests. Two production adapters:
   A `session=<key>` call bypasses the pool entirely, since it needs a stable named
   session rather than a reset-between-uses worker.
 
-  Per-call `agent` / `model` / `cwd` overrides each get their **own** warm
+  Per-call `agent` / `model` / `cwd` / `effort` overrides each get their **own** warm
   sub-pool, so a multi-specialist fan-out still gets warm reuse per specialist and
   a worker built for one identity never serves a call that asked for another.
   Distinct identities are capped at `max_identities` (default 8); beyond that a
@@ -1495,6 +1538,14 @@ the redacted event plus the run's `session_key`, and the frontend
 budget snapshot. On a terminal state, `dashboard/workflow_inject.py` posts the
 result into the originating chat slot and starts (or queues) an agent turn so the
 user gets a synthesized answer rather than a raw blob.
+
+A finished run's message carries its result as a `json` block when the serialized
+result is at most `_MAX_RESULT_CHARS` (4,000) characters. A longer result is cut to
+that many characters and shown in a `text` block, after a line that says it was
+truncated, gives both sizes and names the `result` field of
+`workflow_result('<run_id>')` as the complete value. A cut JSON document is not JSON,
+so a preview is never labelled `json`. A result `json.dumps` cannot serialize is shown
+as its `str()` form, in a `text` block too.
 
 An agent the run ends before it finishes has no `agent_finished`: `_RunContext.agent()`
 records that event only after its call returns, and a cancel leaves the call by

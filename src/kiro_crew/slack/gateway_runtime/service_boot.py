@@ -6,7 +6,8 @@ and blocks until shutdown; and the post-bind session-start sizing log.
 
 Orchestrator fields read: ``_background_tasks``, ``_bot_token``, ``_cfg``,
 ``_cron_injecting``, ``_json_ready``, ``_no_crons``, ``_no_dashboard``, ``_no_open``,
-``_owner_id``, ``_port_override``, ``_slack_enabled``, ``_test_mode``,
+``_owner_id``, ``_port_override``, ``_runner_admission_adopted``, ``_slack_enabled``,
+``_test_mode``,
 ``_tracking_channels``, ``autonudge_svc``, ``cron_svc``, ``subagent_mgr``.
 Orchestrator fields written: ``_configured_host``, ``_dashboard_port``,
 ``_dashboard_runner``, ``_feature_video_task``, ``_local_only``, ``_marker_write_task``,
@@ -236,6 +237,11 @@ async def _init_services(self: GatewayOrchestrator) -> None:
         logger.debug("Agent spec verification failed", exc_info=True)
 
     self.slack = RealSlackClient(self._bot_token) if self._slack_enabled else None
+    # Slack agent sessions (status, title, native Stop): the driver is attached
+    # at boot and reads slack.agent_sessions (and the install's capability) live.
+    from kiro_crew.slack.agent_sessions.status import configure as _configure_agent_sessions
+
+    _configure_agent_sessions(self)
     factory = build_provider_factory(self._cfg)
 
     # Only in-memory wiring belongs on the boot path. The closed barrier
@@ -1103,6 +1109,10 @@ async def run(self: GatewayOrchestrator) -> None:
         # it while the probe is missing -- which would let the repair close a
         # child that is still running.
         self._register_child_liveness()
+    # Past the store-ready pass: with no adoption sweep armed, none will
+    # decide the runs a restart recovered, so fair admission stops holding them.
+    if self.task_runner is not None and not self._runner_admission_adopted:
+        self.task_runner.end_recovery_wait()
 
     # Persisted Crew work and legacy channel agents can dispatch providers
     # immediately when resumed, so start them only after the shared memory
@@ -1385,7 +1395,9 @@ async def run(self: GatewayOrchestrator) -> None:
         except Exception:
             logger.warning("Background session start failed", exc_info=True)
 
-    asyncio.create_task(_start_bg_session())
+    _bg_session_task = asyncio.create_task(_start_bg_session())
+    self._background_tasks.add(_bg_session_task)
+    _bg_session_task.add_done_callback(self._background_tasks.discard)
 
     # Stale-asset watchdog: detects when an update prunes the running
     # install's static assets and triggers graceful shutdown so the

@@ -62,7 +62,16 @@ from kiro_crew.dashboard.ws_side_frames import (  # noqa: F401 -- re-exported: c
     broadcast_side_result,
     broadcast_thread_reply,
 )
+from kiro_crew.dashboard.ws_subagent_send import (  # noqa: F401 (re-exported)
+    SUBAGENT_REPLAY_BATCH_THRESHOLD,
+    _send_subagent_replay,
+    _subagent_replay_has_owner,
+    send_subagent_replay_done,
+)
 from kiro_crew.security import redact_credentials, redact_exfiltration_urls
+from kiro_crew.shared_crew import presence as shared_presence
+from kiro_crew.shared_crew.collab import FRAME_ACTIVITY
+from kiro_crew.shared_crew.decisions import request_principal
 from kiro_crew.subagent_persistence import read_panel_records
 
 logger = logging.getLogger(__name__)
@@ -118,68 +127,9 @@ async def _status_frame(state: DashboardState) -> dict[str, Any]:
     }
 
 
-# Reconnect replay: more subagent frames than this collapse into ONE
-# subagent_snapshot_batch frame (scale plumbing — a per-agent burst at
-# 60-100 agents saturates the socket the moment a client reconnects).
-SUBAGENT_REPLAY_BATCH_THRESHOLD = 8
-
 #: The one replay request a crew-log-off install makes per subscribe. Its folder
 #: reader has no per-slot index, and no client slot name can be this string.
 _FOLDER_REPLAY = "\x00folders"
-
-
-def _subagent_replay_has_owner(frame: object) -> bool:
-    """Whether a replay frame names the chat that owns the subagent.
-
-    ``spawn_run`` can continue in degraded mode when caller identity cannot be
-    resolved, leaving ``parent_session_key == ""``. Such a run is visible in the
-    global spawn inventory, but it has no session-scoped destination. Sending an
-    empty ``slot`` to a chat client is unsafe: older reducers interpreted it as
-    the currently active slot, so a fresh popout adopted unrelated agents.
-    """
-    if not isinstance(frame, dict):
-        return False
-    data = frame.get("data")
-    if not isinstance(data, dict):
-        return False
-    slot = data.get("slot")
-    return isinstance(slot, str) and bool(slot.strip())
-
-
-async def _send_subagent_replay(ws: Any, state: Any, frames: list[dict]) -> None:
-    """Send replay *frames* to *ws* through the same gates the live frames take.
-
-    Per-slot scope gate on the reconnect replay. The broadcast chokepoint covers
-    live events, but this replay writes to the socket directly, so it must apply
-    the same check. Dashboard users pass through ``_ws_client_allowed``
-    unconditionally.
-
-    Ownership is a separate prerequisite: an unresolved parent produces
-    ``slot: ''``. That run remains visible through the global spawn inventory, but
-    there is no chat authorized to adopt it. Filtered before batching so even an
-    older client with an empty-slot fallback never receives the orphan as
-    session-scoped state.
-    """
-    frames = [
-        _f
-        for _f in frames
-        if _subagent_replay_has_owner(_f)
-        and state._ws_client_allowed(ws, str(_f.get("type", "")), _f.get("data", {}))
-    ]
-    try:
-        if len(frames) > SUBAGENT_REPLAY_BATCH_THRESHOLD:
-            # ``subagent_snapshot_batch`` is deliberately absent from every
-            # ws_event_scope table: it is delivery packaging for frames THIS socket
-            # is already cleared for (filtered item-by-item above), never a
-            # broadcast. Routing it through the gate would reject it as an unknown
-            # event and cost the app its whole replay, so keep this send and the
-            # per-item filter together.
-            await ws.send_json({"type": "subagent_snapshot_batch", "data": {"items": frames}})
-        else:
-            for _frame in frames:
-                await ws.send_json(_frame)
-    except Exception:
-        pass
 
 
 def build_persisted_subagent_frame(record: dict, *, redact: Callable[[str], str]) -> dict:
@@ -580,6 +530,7 @@ def build_subagent_snapshot(a: Any, *, now: float | None = None) -> dict:
         "requested_model": _r(a.requested_model),
         "streaming": _r(a.streaming_text),
         "last_tool": _r(a.last_tool),
+        "last_tool_call_id": _r(getattr(a, "last_tool_call_id", "") or ""),
         "tool_count": a.tool_count,
         "stalled": a.stalled,
     }
@@ -850,7 +801,16 @@ async def _serve_ws(
     ws["_app"] = ws_app
     ws["_is_dashboard_user"] = request.get("is_dashboard_user", False)
     ws[RELAY_TEAMMATE_WS_FLAG] = is_relay_teammate(request)
+    # Shared Crew: the socket's trusted actor is the upgrade request's, as the
+    # auth middleware published it. Frames never name a principal.
+    from kiro_crew.shared_crew.identity import actor_of
+
+    ws["_shared_crew_actor"] = actor_of(request)
     ws["_allowed_events"] = allowed_events
+    # Presence is bound to the actor the auth middleware verified for this
+    # upgrade request; an activity frame never names who sent it.
+    presence_conn_id = f"ws:{id(ws)}"
+    presence_principal = request_principal(request)
     # A tab whose bundle applies ``slot_patch`` frames says so in ``?caps=``;
     # without the declaration (an older bundle, a companion window, an app
     # token) the socket keeps receiving the full ``slots`` list for every
@@ -1050,6 +1010,8 @@ async def _serve_ws(
                 # Counts are None (published as null → loading skeleton) until
                 # the first successful refresh — never an authoritative false 0.
                 data = await _status_frame(state)
+                if ws.get("_is_dashboard_user", False):
+                    shared_presence.sweep_and_broadcast(state)
                 if not ws.get("_is_dashboard_user", False):
                     # This frame is Tier 0 — always delivered, because every
                     # client needs the version (to force a reload across a
@@ -1440,6 +1402,7 @@ async def _serve_ws(
                             if isinstance(_f.get("data"), dict) and _f["data"].get("id")
                         }
                         await _send_subagent_replay(ws, state, _replay)
+                        await send_subagent_replay_done(ws, ws_app)
 
                         async def _durable_replay(_requested: list[str]) -> None:
                             """Replay the finished runs of the *_requested* slots.
@@ -1731,6 +1694,14 @@ async def _serve_ws(
                         state.unsubscribe_subagents(ws)
                         if _replay_queue is not None:
                             _replay_queue.clear()
+                    elif msg_type == FRAME_ACTIVITY:
+                        shared_presence.handle_activity_frame(
+                            state,
+                            presence_conn_id,
+                            presence_principal,
+                            data,
+                            dashboard_user=bool(ws.get("_is_dashboard_user", False)),
+                        )
                     elif msg_type == "fold_watch":  # replaces the set; no-op unless capable
                         state.set_fold_watch(ws, data.get("slots"))
                     elif msg_type == "slot_focused":
@@ -1766,6 +1737,7 @@ async def _serve_ws(
                                 id(ws),
                                 data.get("slot"),
                                 announce=data.get("announce") is True,
+                                hidden=data.get("hidden") is True,
                             )
                             note_foreground(state, id(ws), data.get("slot"))
                     elif msg_type == "slot_read":
@@ -1818,6 +1790,10 @@ async def _serve_ws(
             _replay_queue.cancel()
         note_view_closed(state, id(ws))
         note_foreground(state, id(ws), None)
+        try:
+            shared_presence.release_connection(state, presence_conn_id)
+        except Exception:
+            logger.debug("ws: presence release failed", exc_info=True)
         state.unsubscribe_logs(ws)
         state.unsubscribe_subagents(ws)
     return ws

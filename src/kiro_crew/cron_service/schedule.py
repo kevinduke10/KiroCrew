@@ -72,8 +72,26 @@ def cron_expr_matches(expr: str, dt: datetime) -> bool:
 
 
 def validate_cron_expr(expr: str) -> bool:
-    """Return True if ``expr`` is a syntactically valid 5-field cron expression."""
-    return croniter.is_valid(expr)
+    """Return True if ``expr`` is a syntactically valid 5-field cron expression.
+
+    A seconds-bearing six-field expression refuses even though croniter reads
+    one: :func:`is_due` never fires a job twice in the same UTC minute, so such
+    a schedule advertises a next run (:func:`compute_next_run_ts` advances by
+    seconds) that the due check then suppresses forever. Both writers funnel
+    through this predicate (``fields.build_job`` on create,
+    ``fields.apply_job_update`` on update), so the schedule the minute-level
+    execution contract cannot honor refuses before it persists. The one-field
+    ``@`` aliases (``@daily``, ``@yearly``) stay — they carry no seconds field.
+    """
+    if not croniter.is_valid(expr):
+        return False
+    parts = expr.split()
+    if len(parts) == 5:
+        return True
+    # The one-field ``@`` aliases (``@daily``, ``@yearly``) carry no seconds
+    # field; every other width croniter accepts either does (six fields) or
+    # never fires once a minute at all.
+    return len(parts) == 1 and expr.startswith("@")
 
 
 def _humanize_cron(expr: str, tz_name: str = "") -> str:
@@ -234,21 +252,39 @@ def get_local_tz() -> tuple[str, tzinfo]:
 
 # Patterns for parse_time_string
 _RE_IN_DURATION = re.compile(
-    r"^in\s+(\d+)\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours)$", re.I
+    r"^in\s+(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes"
+    r"|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks)$",
+    re.I,
 )
 _UNIT_SECS = {
     "s": 1,
     "sec": 1,
+    "secs": 1,
     "second": 1,
     "seconds": 1,
     "m": 60,
     "min": 60,
+    "mins": 60,
     "minute": 60,
     "minutes": 60,
     "h": 3600,
     "hr": 3600,
+    "hrs": 3600,
     "hour": 3600,
     "hours": 3600,
+}
+# Day units are calendar days in the job's zone, not 86400-second blocks, so
+# "in 2 days" lands at the same clock time it was asked at even across a DST
+# change, the way "tomorrow" does.
+_UNIT_DAYS = {
+    "d": 1,
+    "day": 1,
+    "days": 1,
+    "w": 7,
+    "wk": 7,
+    "wks": 7,
+    "week": 7,
+    "weeks": 7,
 }
 
 
@@ -315,10 +351,18 @@ def parse_time_string(s: str, tz_name: str = "") -> float | str:
         resolved_tz_name, tz = seams.get_local_tz()
     now = seams.datetime.now(tz)
 
-    # "in 5 minutes", "in 2 hours"
+    # "in 5 minutes", "in 2 hours", "in 3 days", "in 1 week"
     m = _RE_IN_DURATION.match(s)
     if m:
-        secs = int(m.group(1)) * _UNIT_SECS[m.group(2).lower()]
+        unit = m.group(2).lower()
+        if unit in _UNIT_DAYS:
+            try:
+                later = now + timedelta(days=int(m.group(1)) * _UNIT_DAYS[unit])
+            except OverflowError:
+                return f"Error: '{s}' is outside the supported date range"
+            error = _wall_clock_resolution_error(later, tz, resolved_tz_name)
+            return error or later.timestamp()
+        secs = int(m.group(1)) * _UNIT_SECS[unit]
         return time.time() + secs
 
     # Try common formats with optional "tomorrow"
@@ -711,7 +755,7 @@ def next_wake_secs(jobs: Iterable[CronJob], claimed: Container[str], now: float)
             backoff_until = job.failure_backoff_until()
             if backoff_until is not None:
                 next_run = max(next_run, backoff_until)
-            delays.append(max(0.0, next_run - now))
+            delay = max(0.0, next_run - now)
         elif job.schedule.kind == "at" and job.schedule.at_ts:
             # Same as `every`: a re-enabled one-shot inside its backoff would
             # otherwise re-arm at 0 s and spin until the backoff ends.
@@ -719,7 +763,7 @@ def next_wake_secs(jobs: Iterable[CronJob], claimed: Container[str], now: float)
             backoff_until = job.failure_backoff_until()
             if backoff_until is not None:
                 next_attempt = max(next_attempt, backoff_until)
-            delays.append(max(0.0, next_attempt - now))
+            delay = max(0.0, next_attempt - now)
         elif job.schedule.kind == "cron":
             # Wake ON the next cron boundary (as `at`/`every` do), not on a
             # flat poll whose phase is unrelated to the schedule -- a phase
@@ -734,9 +778,9 @@ def next_wake_secs(jobs: Iterable[CronJob], claimed: Container[str], now: float)
             # picked up within one poll.
             cron_next = _next_cron_boundary_ts(job, now)
             if cron_next is not None:
-                delays.append(max(0.0, cron_next - now))
+                delay = max(0.0, cron_next - now)
             else:
-                delays.append(_TIMER_POLL_SECS)
+                delay = _TIMER_POLL_SECS
             # A backoff ending inside a matching minute makes the job due at that
             # end, which can fall between the boundary wake and the next poll.
             backoff_until = job.failure_backoff_until()
@@ -746,4 +790,12 @@ def next_wake_secs(jobs: Iterable[CronJob], claimed: Container[str], now: float)
                 and _cron_due_at_backoff_end(job, backoff_until)
             ):
                 delays.append(backoff_until - now)
+        else:
+            continue
+        # A skipped date leaves an overdue job enabled without advancing its
+        # last run. Poll instead of immediately repeating the same refused scan;
+        # other jobs still contribute their own earlier deadlines.
+        if delay == 0.0 and job.skip_dates and not is_due(job, now):
+            delay = _TIMER_POLL_SECS
+        delays.append(delay)
     return min(delays) if delays else None

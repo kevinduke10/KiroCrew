@@ -395,9 +395,7 @@ _BASE_STATE_MEMBERS: dict[str, tuple[str, bool, bool, str]] = {
     ),
     "linked_session_busy": ("function", False, False, "(self, session_key: 'str') -> 'bool'"),
     "live_slot_count": ("function", False, False, "(self) -> 'int'"),
-    "ensure_chat_reactions_loaded": ("function", True, False, "(self) -> 'None'"),
     "load_chat_pins": ("function", False, False, "(self) -> 'None'"),
-    "load_chat_reactions": ("function", False, False, "(self) -> 'None'"),
     "load_cron_folders": ("function", False, False, "(self) -> 'None'"),
     "load_folders": ("function", False, False, "(self) -> 'None'"),
     "load_tags": ("function", False, False, "(self) -> 'None'"),
@@ -589,7 +587,7 @@ _BASE_STATE_MEMBERS: dict[str, tuple[str, bool, bool, str]] = {
         False,
         False,
         "(self, ask_id: 'str', answers: 'dict[str, str] | None', *, reason: 'str "
-        "| None' = None) -> 'bool'",
+        "| None' = None, responder: 'Any' = None, response_id: 'str' = '') -> 'bool'",
     ),
     "resolve_skill_review_notifications": (
         "function",
@@ -620,12 +618,6 @@ _BASE_STATE_MEMBERS: dict[str, tuple[str, bool, bool, str]] = {
     ),
     "running_session_keys": ("function", False, False, "(self) -> 'frozenset[str]'"),
     "save_chat_pins": ("function", False, False, "(self) -> 'None'"),
-    "save_chat_reactions": (
-        "function",
-        False,
-        False,
-        "(self, records: 'list[dict] | None' = None) -> 'None'",
-    ),
     "save_cron_folders": ("function", False, False, "(self) -> 'None'"),
     "save_folders": ("function", False, False, "(self) -> 'None'"),
     "save_pinned_session_order": ("function", False, False, "(self, keys: 'list[str]') -> 'None'"),

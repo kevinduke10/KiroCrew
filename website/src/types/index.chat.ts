@@ -375,6 +375,9 @@ export interface ChatFolder {
    *  ancestor owned by ANOTHER principal is never delivered to this folder's
    *  chats, so the inherited list filters on it. */
   owner_app?: string
+  /** True on a mate's home folder: the one folder that holds every chat and
+   *  folder the mate (`owner_app` `member:<store>`) creates. */
+  mate_home?: boolean
   /** Channel namespace when this folder was created by per-channel session filing (e.g. 'discord'). */
   channel?: string
 }
@@ -591,6 +594,9 @@ export interface ContentBlock {
   type: BlockType
   content: string
   language?: string
+  /** A code fence's info string after its language tag, trimmed (```lang title="x"
+   *  gives `title="x"`). Absent when the opening line carries only the tag. */
+  info?: string
   complete: boolean
   /** 1-based line in the original raw source where this block starts. */
   startLine?: number
@@ -618,6 +624,10 @@ export interface Notification {
    *  the same value, so one event shows one banner. Absent on client-made notes. */
   tag?: string
   slot?: string; session_key?: string; slack_link?: string
+  /** A Crew Mode crew member's approval: the key of the crew member that waits.
+   *  `slot` then names its conductor, whose approval card is the only place it is
+   *  decided, so the note offers no Approve or Reject of its own. Client-made. */
+  crew_member?: string
   /** Transcript identity used to resume a closed slot; the slot name alone may name no history. */
   history_key?: string
   // RFC Phase 3: schema-v2 routing + per-channel settings stamps

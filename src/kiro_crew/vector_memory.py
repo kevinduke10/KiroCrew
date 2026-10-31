@@ -111,6 +111,8 @@ from kiro_crew.vector_memory_lifecycle import (  # noqa: F401
     _migrate_v2,
 )
 from kiro_crew.vector_memory_member import (  # noqa: F401
+    _member_consolidation_confidence,
+    _member_consolidation_metadata,
     _member_identity,
     _member_store,
     consolidation_source_digest,
@@ -242,6 +244,7 @@ _FAISS_FILE = "memory.faiss"
 _AUDITABLE_REJECT_CODES = {
     SemanticRejectCode.ALLOWLIST,
     SemanticRejectCode.CONFIDENCE,
+    SemanticRejectCode.CONSOLIDATION_VALUE_SIZE,
     SemanticRejectCode.INJECTION,
     SemanticRejectCode.RESERVED_PREFIX,
     SemanticRejectCode.VALUE_EMPTY,
@@ -546,6 +549,8 @@ class VectorMemoryStore:
         if extra_prefixes:
             self._prefixes.extend(extra_prefixes)
         self._db: sqlite3.Connection | None = None
+        # Whether _db's own close is kept from deleting the -wal (sqlite_wal.keep_wal_on_close).
+        self._wal_kept_on_close = False
         # POSIX permits replacing an open SQLite file. Private V2 stores hold a
         # shared lock outside the swappable store directory for the full
         # connection lifetime so startup restore can refuse rather than move a

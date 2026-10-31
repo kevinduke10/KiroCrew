@@ -25,7 +25,11 @@ and publishing `slot.task`, the window that holds the automatic Slack link
 (`chat_slack.maybe_auto_link_slack`, at most `AUTO_LINK_HOLD_SECS`), so a second
 send arriving in that window takes the queue path instead of dispatching a
 second turn; the handler's busy branch reads the same flag, and a `finally`
-clears it on every path out of the window. A Stop pressed in that window has no
+clears it on every path out of the window. With Shared Crew admission on, the
+busy branch and the subagent hold accept the queued message as parked work before
+it enters the queue, so it is bounded and charged to its sender, and a send whose
+`Idempotency-Key` was already accepted is answered from its record before any
+branch writes a row ([shared-crew.md](shared-crew.md) section 4). A Stop pressed in that window has no
 task to cancel, so the handler reads `_stop_generation` across the hold and does
 not dispatch the stopped turn; a send queued behind it in that window starts
 then, as it would at the end of a stopped turn. `test_slot_running_readers.py::test_running_and_turn_running_slot_readers_are_enumerated`
@@ -166,6 +170,14 @@ history, and a too-recent result is cached in memory until it can expire, so
 repeated focus frames stay cheap. A return while the thread runs a turn
 waits for the turn to end, up to 30 minutes, while the owner keeps the thread
 on screen. Each skip logs one debug line with the thread key and a fixed reason.
+
+A Crew Mode root (a root chat running a conductor) is eligible on the same
+rules as a mate thread, with one stricter trigger: only an explicit page hide
+(`hidden: true`) starts its away episode, because a split-view pane can stay
+visible while another pane holds focus. A pane or sidebar switch, a socket loss
+and a restart never do. Its workers and other chats are not eligible. Its prompt names
+the conductor as the writer and asks which work items finished, which wait on
+the owner, and which still run.
 
 A qualifying return writes a hidden durable fingerprint claim, then posts a
 short fixed mate opener ("Welcome back, let me catch you up on where we
@@ -757,9 +769,9 @@ if needed — no compaction, since background tasks are stateless:
   chat-turn hook and never advances `_bg`), and the log names the backstop rather
   than the percentage that did not trigger it.
 - Process-tree RSS at or over `session.watchdog_rss_max_mb` → recycle. When
-  that knob is 0 (its default, which turns the chat-session sweep off) the
-  ceiling is `BACKGROUND_RSS_FALLBACK_MB` (1536 MiB), so this runtime stays
-  bounded either way.
+  that knob is 0 (which turns the chat-session sweep off) or above
+  `BACKGROUND_RSS_FALLBACK_MB` (1536 MiB, below the 4096 default), the ceiling
+  is that fallback, so this runtime keeps its own lower bound either way.
 - Below thresholds → no-op (session stays warm)
 
 Callers: heartbeat callback, taskrunner lesson extraction, `background_turn()`,
@@ -1542,14 +1554,15 @@ against sweep completeness, and are torn down at `close_all`.
 - **Compaction threshold precedence** (`SessionManager.effective_autocompact_pct`): the session's own override (the context popover slider, `set_autocompact_pct`), else the default the session's crew member declares (`agents.<name>.autocompact_pct`; 0 or a negative value inherits, a positive value is held to the global's 5–90 range at load), else the global `session.autocompact_pct`. The crew is the identity the allocation resolved (`_Session.capability_member`), read against the manager's live `_cfg`, so a config edit reaches running sessions on their next reading and a session with no crew follows the global. The value cannot live in the kiro agent JSON, which kiro-cli rejects on any unknown field. `GET/POST /api/chat/slots/{slot}/autocompact` report it as `agent_pct` with the crew's redacted name as `agent` (both null when none is declared; a slot with no live session answers for the crew its next session starts under) so the popover shows which default a cleared slider returns to. GET also reports `harness_managed`: the backend id when the session compacts on its own (a member of `ACP_BACKENDS_HARNESS_MANAGED_COMPACTION`, KAS), else null, read off the live provider's `harness_managed_compaction_backend` or, with no live session, from `select_provider_backend` for the session's next start. The popover then shows a note that the threshold does not apply there, because the turn-end gate declines Crew's `/compact` for such a backend at any reading. The `kirocrew chat` REPL compacts at the same number for the crew its run resolves to.
 - **Crossing the threshold mid-turn** (`SessionManager.compaction_due_after_turn`, `chat_turn.recovery._notice_compaction_after_turn`): compaction still runs only after a turn ends. A dashboard turn whose reading crosses the effective threshold while it is still working gets, ONCE per turn, at the first tool-result boundary where every tool row above is done and no text segment is pending, one `kind="compaction"` row marked `meta.notice="compact_after_turn"` ("Context at N% (limit M%) — will compact after this turn", rendered by `CompactionCard` from the catalog as a calm info row with a clock glyph). It is a display row only: the model is not told anything and the turn runs on unchanged. `compaction_due_after_turn` reads the gate's own side-effect-free rungs (`CompactionCoordinator._gate_rung`, which `_compaction_gate_decision` delegates to after settling a pending verdict) and changes nothing; it is False while a pending verdict waits (its settlement can arm a cooldown) and on the recycle arm (a restart, not a compaction), so Claude-Code, harness-managed and uncompactable backends, an unconfirmed reading, a compaction in flight and an active cooldown get no row. Slash-command turns are skipped. The threshold and the end-of-turn trigger are unchanged.
 - **Context compaction**: at ≥ configured threshold (`session.autocompact_pct`, default 70%, valid 5–90), compacts **in place** on a member of
-  `ACP_BACKENDS_COMPACT` — kiro-cli, claude, codex, opencode, goose and pi. They divide by WHERE
+  `ACP_BACKENDS_COMPACT` — kiro-cli, claude, codex, opencode, goose, pi and copilot, plus KAS,
+  whose harness-managed case is the first bullet below. They divide by WHERE
   the
   done signal lands, which is `ACP_BACKENDS_INLINE_COMPACTION`: kiro-cli sends a
   `/compact` **prompt** (`session/prompt` + `_kiro.dev/compaction/status` watch —
   never the string form of `_kiro.dev/commands/execute`, which kiro-cli 2.14.0
   exits rc=0 on) and its result arrives afterwards, while claude, codex, opencode,
-  goose and pi finish the whole compaction inside the prompt turn. claude and opencode emit no
-  status at all, goose emits only a `Compaction complete` chunk and pi only a `Compaction completed` chunk; codex reports the compaction as a `tool_call` pair, marked
+  goose, pi and copilot finish the whole compaction inside the prompt turn. claude and opencode emit no
+  status at all, goose emits only a `Compaction complete` chunk, pi only a `Compaction completed` chunk and copilot only a `Compacted conversation history` chunk; codex reports the compaction as a `tool_call` pair, marked
   `_meta.contextCompaction` on 1.11.0 and unmarked on 2.2.2 (both translated by
   `_dispatch.parse_codex_compaction_update`; the unmarked shape only for
   `ACP_BACKENDS_UNMARKED_COMPACTION_PAIR`), that arrives before the prompt
@@ -1662,11 +1675,23 @@ against sweep completeness, and are torn down at `close_all`.
   `self._lock` after the acquire releases the semaphore before propagating, so
   the key never stays permanently locked. The helper records itself as the
   permit's holder (`turn_owner`) the moment the acquire completes, before the
-  lock wait: a `reset` that pops the session during that wait records this task
+  lock wait: a teardown that pops the session during that wait records this task
   as the orphaned holder and releases the permit to wake the parked claimants,
   so the refusal paths give the permit back through `_release_reacquired`,
   which absorbs that record (`absorb_orphaned_release`) instead of releasing a
-  second time when the session is no longer registered. Liveness uses
+  second time when the session is no longer registered, and which clears
+  `turn_owner` whichever way the permit goes back. Every teardown verb that pops
+  a session (`reset`, `discard_conversation`, `remove`, `destroy`,
+  `_evict_stale_session`, and `get_or_create`'s own dead-provider eviction) settles the popped permit through one helper,
+  `retire_turn_permit`, in the same lock hold as the pop: it records a named
+  holder and wakes the parked claimants only then. A locked permit with no named
+  holder was just handed to a claimant that has not run yet; that claimant
+  gives it back itself, so the helper leaves it alone. A recorded holder stays
+  recorded across later teardowns of the key (none of them clears
+  `orphaned_holders`) until its owed release is absorbed or the same task
+  adopts the successor's permit (`adopt_turn`). Every holder that releases
+  its permit directly rather than by key (the compaction and background
+  recycle paths) asks `absorb_orphaned_release` first. Liveness uses
   `_provider_effectively_alive` (a dead Claude-Code `per_session` process
   counts as alive — it reconnects lazily on the next `stream()`).
   Consolidating this acquire→relock→revalidate dance in ONE place is
@@ -1925,6 +1950,9 @@ against sweep completeness, and are torn down at `close_all`.
 - <a id="reaping-abandoned-agent-scopes"></a>**Reaping abandoned agent scopes** (`session_scope_reap.py`,
   Linux/systemd only): each agent session runs inside a transient
   `systemd-run --user --scope` under a per-instance child of
+  Under Shared Crew fair admission a runtime spawned for admitted work joins its
+  initiator's per-principal slice beneath the instance slice
+  ([shared-crew.md](shared-crew.md) section 4); the instance slice is the fallback.
   `kirocrew-agents.slice` (`sandbox._agents_slice_name`). `--scope` GCs a
   transient unit only after its process exits, so a hard gateway kill or restart
   strands the whole tree: the leader dies, the `launcher`/`kiro-cli`/
@@ -2041,7 +2069,7 @@ against sweep completeness, and are torn down at `close_all`.
   path — is recorded in
   `../../architecture/design-notes/tool-stall-watchdog-placement.md`.
 - **RSS-threshold recycle** (`_rss_threshold_check`, config
-  `session.watchdog_rss_max_mb`, default 0 via
+  `session.watchdog_rss_max_mb`, default 4096 via
   `DEFAULT_WATCHDOG_RSS_MAX_MB`; 0 disables): recycles non-busy
   sessions whose `/proc` process-tree RSS (MiB) exceeds the ceiling. Skips
   persistent (`_PERSISTENT_KEYS`) and `channel:`-prefixed keys — the same
@@ -5827,3 +5855,12 @@ pops by object identity — if a racing cold-start already replaced the
 entry, only the old session object is shut down; the fresh replacement
 and its session_map entry survive (the old provider is still reaped so
 its process never leaks).
+
+A failed `/compact` whose key holds no session at all is not a compaction
+failure. A close (`remove`) popped the session and shut its provider down, so
+the stream died with the process. That arm returns `"absent"`, next to the
+user-Stop arm and checked after it, with no warning, no failure callback or
+`CONTEXT_COMPACTIONS` count, and no recycle: the close owns the shutdown, and a
+recycle here would shut the same process down a second time. A key that holds a
+DIFFERENT session takes the ordinary failure arm, because that replacement did
+not reap the held session and `_restart_held` still must.

@@ -229,6 +229,19 @@ harness for crew-member DM sessions, reads the same values, except that `kiro`
 there selects KAS: crewmates run on KAS as their Kiro backend, because their
 work-dispatch tools need a backend that takes them per session.
 
+One crewmate can run on its own harness: `agents.<name>.acp_backend` takes the
+same values as `agent.acp_backend` (`kiro` here means kiro-cli, and runs through
+KAS once Kiro Crew confirms your kiro-cli offers v3, as it does there) and applies to
+that crewmate's chat and the worker sessions it opens. Empty inherits
+`agent.member_acp_backend`. A harness this gateway cannot start refuses the
+crewmate's session with `crewmate_harness_unavailable` rather than running it on
+another harness, and the crewmate's `model` and `worker_model` are judged against
+the pinned harness when they change or the harness does, so an edit to another
+field still saves while the pinned harness cannot start. The dashboard shows the
+setting as **Agent harness** on a crewmate's profile Settings page once Settings >
+Developer > Feature Previews > Agent harness per mate is on; a saved pin applies
+whether or not that preview is on.
+
 ## Key Settings
 
 ```json
@@ -360,7 +373,7 @@ work-dispatch tools need a backend that takes them per session.
 | `session.eager_spawn` | Create a chat session when its slot is created, switched, or retargeted instead of waiting for the first message | `true` |
 | `session.archive_retention_days` | Days to keep compacted/rotated session archives before auto-cleanup. `-1` disables cleanup | `30` |
 | `session.file_changes_keep_turns` | How many of a dashboard chat's most recent file-changing turns keep the before and after copies their file-change card diffs. An older turn's card lists its files marked "File only", and the rows that held its copies are written to the session archive first, where `session.archive_retention_days` applies. Rows still in the chat's in-memory window are never changed. Applied when a save re-reads the older part of the transcript: the first save after a restart, after another process appended to the chat, or after the window trims. `0`, the default, keeps every turn's copies, so nothing changes until you set a count | `0` |
-| `session.watchdog_rss_max_mb` | Recycle an idle session when its process tree resident memory exceeds this many MiB. 0 disables, which is the default; the internal background runtime still recycles at 1536 MiB. Size a ceiling to your own agents: one with several MCP servers can sit above 1.4 GB. A session with a turn in flight is never recycled. `kirocrew status` and `kirocrew doctor` show the ceiling next to the gateway's own resident memory | `0` |
+| `session.watchdog_rss_max_mb` | Recycle an idle session when its process tree resident memory exceeds this many MiB. The default 4096 sits above a healthy session with many MCP servers (about 1.4-2.6 GB) and still stops a runaway one. 0 disables; the internal background runtime recycles at 1536 MiB, or at this value when it is lower. A session with a turn in flight is never recycled. `kirocrew status` and `kirocrew doctor` show the ceiling next to the gateway's own resident memory | `4096` |
 | `session.reconcile_max_kills` | Unowned root candidates the runtime reconciler may signal the process tree of in one pass — one candidate can signal several processes. The ceiling equals the default, so this setting can only lower the budget, never raise it. Lower it where more than one install shares this data home: the agent slice is keyed on the data home, so a runtime owned by another install has no record here and reads as unowned. `0` leaves the kill arm observing — it still publishes the `unowned_alive` / `owned_dead` leak reading and audits each candidate it would have signalled as `would_kill`, and signals nothing. The same budget caps one **Reclaim** of the dashboard's Leaked agent runtimes report, so `0` there refuses every candidate. Re-read every cleanup tick, so a change needs no restart | `5` |
 
 ### Dashboard
@@ -383,6 +396,7 @@ work-dispatch tools need a backend that takes them per session.
 | `dashboard.link_patterns` | Rewrite matching plain text in transcripts into links at display time, through the same autolink rule engine editions register vocabulary on. Each rule pairs a JavaScript regex with an absolute http(s) URL template in which `{match}` inserts the matched text percent-encoded (no userinfo, placeholder outside the host), e.g. `{"pattern": "\\bPROJ-\\d+\\b", "url": "https://tracker.example.com/browse/{match}"}`. Code blocks and existing links are never rewritten; an inline code span whose whole text matches becomes a link chip. At most 50 rules with distinct patterns, each carrying at most one wide quantifier (`*`, `+`, `{n,}` or a wide `{n,m}`; narrow ranges may accompany it), scanning at most 2000 characters per text block | `[]` |
 | `dashboard.feature_videos_cache_max_mb` | Disk budget for downloaded clips. Whole release folders are removed oldest-first to fit; the release you are running is never removed. `0` = no cap | `500` |
 | `dashboard.crewmates_in_agent_picker` | List mates in the chat composer's agent picker beside the agent templates. Off: the picker lists templates plus any mate no listed template already covers; the default agent stays even when covered, unless a template shares its name. Takes effect when the dashboard is reloaded; no gateway restart | `false` |
+| `dashboard.feature_previews` | Which unreleased dashboard features are on under Settings > Developer > Feature previews, as `{name: true/false}` (names: `artifact_deploy`, `crew_mode`, `crewmate_harness`, `folder_conductor`, `layout_harness`, `remote_crew_chat`, `session_environments`, `webhooks`). The dashboard keeps a browser copy as a cache and writes each switch here, so it stays set on every browser and dashboard address. An absent name, an unknown name, or a value that is not `true`/`false` reads as off | `{}` |
 | `dashboard.jira_auth` | Per-host Jira connection entries for the Issues panel, each `{"host": ..., "email": ...}`. `user` is accepted as an alias of `email` (`email` wins when both are set). The API token is not stored here: it is read from the secrets vault first, then from `.env` as `JIRA_API_TOKEN` (or a per-host token name when several hosts are configured). A Jira Cloud host (`*.atlassian.net`) with no `email`/`user` fails with `jira_config_error` before any request is sent | `[]` |
 
 ### Slack
@@ -621,6 +635,7 @@ them, so there is no enable switch here: only knobs for *which* model runs.
 | `memory.embedding_threads` | CPU threads llama.cpp may use per embedding call; explicit settings are clamped to the CPUs the process may run on, which a CPU-set restriction (`--cpuset-cpus`, `taskset`) narrows below the host's cores | `4` (`6` where the process may use 12 or more CPUs; a saved `4` is read as this default there, so set 3 or 5 to stay low) |
 | `memory.embedding_bulk_threads` | Threads used for background embedding; `0` inherits `embedding_threads` | `1` |
 | `memory.embedding_bulk_duty` | Target fraction of worker time spent on background embedding; interactive queries take priority | `0.2` |
+| `memory.embedding_weight_repack` | Keep llama.cpp's CPU-repacked copy of the embedding weights, which speeds up background embedding. `false` saves about 450 MB while the model is loaded; background embedding gets slower and new vectors differ very slightly from stored ones. Applies at the next model load | `true` |
 | `memory.embedding_idle_evict_secs` | Unload the embedding model after this many seconds with no embedding; the next search loads it again. `0` keeps it loaded | `3600` |
 | `memory.embedding_child_process` | Load the embedding model and run inference in a separate low-priority child process, so embedding work never competes with the gateway process. Off by default: the model runs inside the gateway. Takes effect at the next model load | `false` |
 | `memory.embed_model_url` | Override HTTPS URL for the embedding-model GGUF download (mirrored or airgapped hosts). Empty uses the public Kiro Crew CDN. `KIROCREW_EMBED_MODEL_URL` wins over both. Downloads are sha256-verified regardless of source | `""` |

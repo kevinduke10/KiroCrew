@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from kiro_crew.dashboard.git_repo_touches import TouchCandidates
     from kiro_crew.dashboard.state_parts.dashboard_state import DashboardState
     from kiro_crew.dashboard.steer_retract import SteerClear, SteerRetract
+    from kiro_crew.dashboard.transcript_binding import TranscriptBinding
     from kiro_crew.subagent import SubagentDelivery
     from kiro_crew.trust_patterns import GrantDeadline
 
@@ -86,7 +87,7 @@ class _ChatSlot:
         "workspace",
         "memory_store",
         "_memory_assignment_from_history",
-        "project",
+        "_binding",
         "created_at",
         "_messages",
         "_lazy_window",
@@ -133,6 +134,7 @@ class _ChatSlot:
         "_detail_render_lock",
         "_last_stop_reason",
         "_created_by",
+        "_attribution",
         "_created_by_sid",
         "_saved_created_by",
         "_lineage_minted",
@@ -321,9 +323,11 @@ class _ChatSlot:
         "_steer_send_ids",
         "_steer_user_origin",
         "_steer_channel_origin",
+        "_steer_owner_origin",
         "_turn_channel_narrowed",
         "_turn_channel_origin",
         "_turn_user_sent",
+        "_turn_owner_sent",
         "_steer_admissions",
         "_steer_decision_strips",
         "_steer_possibly_delivered",
@@ -401,7 +405,7 @@ class _ChatSlot:
     _turn_timeout_hydrated: bool
     memory_store: str
     _memory_assignment_from_history: bool
-    project: str
+    _binding: TranscriptBinding
     executor: str
     instance_id: str
     remote_slot: str
@@ -420,6 +424,7 @@ class _ChatSlot:
     _summary_turn_mark: int
     _last_stop_reason: str
     _created_by: str
+    _attribution: Any
     _created_by_sid: str
     _saved_created_by: str
     _lineage_minted: bool
@@ -610,9 +615,11 @@ class _ChatSlot:
     _steer_send_ids: dict[str, str]
     _steer_user_origin: dict[str, bool]
     _steer_channel_origin: dict[str, bool]
+    _steer_owner_origin: dict[str, bool]
     _turn_channel_narrowed: bool
     _turn_channel_origin: bool
     _turn_user_sent: bool
+    _turn_owner_sent: bool
     _steer_admissions: dict[str, dict]
     _steer_decision_strips: dict[str, dict]
     _steer_possibly_delivered: set[str]
@@ -709,6 +716,22 @@ class _ChatSlot:
         # legacy sessions; the identity COMPARISON still requires a non-empty
         # ``created_at`` on both sides.
         self._disk_meta_observed: bool = False
+
+    @property
+    def project(self) -> str:
+        """The session's project directory, held in the binding aliases share.
+
+        Live slots on one transcript run one session with one working directory, so
+        they hold one value: a write on any of them is the group's write
+        (``dashboard/transcript_binding.py``).
+        """
+        return self._binding.project
+
+    @project.setter
+    def project(self, value: str) -> None:
+        from kiro_crew.dashboard.transcript_binding import write_project
+
+        write_project(self._binding, value)
 
     @property
     def reasoning_effort(self) -> str:

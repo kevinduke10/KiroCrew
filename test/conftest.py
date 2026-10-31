@@ -670,6 +670,23 @@ def _windows_restrict_to_owner_stub(request, _floor_monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_inherited_admission_service(_floor_monkeypatch):
+    """Start every test without a Shared Crew admission service another test built.
+
+    ``admission_gate`` keeps the gateway's service process-wide. A chat send a
+    test drives builds one, and a later test in the same worker would then run
+    every turn through it, config re-reads included. Rebound only when the
+    module is already imported; the inherited value is restored at teardown.
+    """
+    gate = sys.modules.get("kiro_crew.shared_crew.admission_gate")
+    if gate is not None:
+        _floor_monkeypatch.setattr(gate, "_SERVICE", None)
+        _floor_monkeypatch.setattr(gate, "_SERVICE_LOOP", None)
+        _floor_monkeypatch.setattr(gate, "_SERVICE_LOCK", gate.LoopBoundLock())
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolate_aim_skills_dir(_floor_monkeypatch):
     """Prevent SkillsLoader from discovering edition-contributed skill roots.
 
@@ -1292,3 +1309,33 @@ def _no_leaked_interleave_hook():
             "earlier test leaked it (this test is the victim, not the cause). "
             "Set it with monkeypatch.setattr so it reverts even on failure."
         )
+
+
+#: Markers Kiro Crew sets on the processes it spawns for an agent, which
+#: ``cloud.aws._in_agent_session`` reads to refuse cloud mutations. When an agent
+#: session runs the suite they are inherited from it, so the guard would read
+#: every "human terminal" test as an agent. CI never has them; hiding them here
+#: makes a local agent-run suite see what CI sees.
+_INHERITED_AGENT_MARKERS = (
+    "KIROCREW_SESSION_KEY",
+    "KIROCREW_RUNTIME_AGENT",
+    "KIROCREW_HOST_PID",
+)
+
+
+@pytest.fixture(autouse=True)
+def _cloud_guard_ignores_the_runners_agent_markers(_floor_monkeypatch):
+    """Hide the runner's own agent markers and confinement from the cloud guard.
+
+    The env markers go through the floor's stack, so a test's own ``setenv`` of
+    one still wins and a mid-test ``monkeypatch.undo()`` does not bring the
+    runner's value back. The confinement half (the remembered sandbox marker,
+    the agents cgroup) is pinned off only for ``cloud.aws`` and only once that
+    module is loaded, so the probes themselves keep their real behaviour
+    everywhere else. A test of the guard re-pins ``aws._agent_confinement``.
+    """
+    for name in _INHERITED_AGENT_MARKERS:
+        _floor_monkeypatch.delenv(name, raising=False)
+    aws_mod = sys.modules.get("kiro_crew.cloud.aws")
+    if aws_mod is not None and hasattr(aws_mod, "_agent_confinement"):
+        _floor_monkeypatch.setattr(aws_mod, "_agent_confinement", lambda: False)

@@ -273,6 +273,8 @@ class _AllocationOwner(Protocol):
 
     def adopt_turn(self, key: str) -> None: ...
 
+    def retire_turn_permit(self, key: str, session: Any) -> None: ...
+
     def get_provider(self, key: str) -> LLMProvider | None: ...
 
     async def get_subagent_runtime(
@@ -1149,9 +1151,14 @@ class SessionAllocationService:
                 try:
                     session_id = session.provider.session_id
                     if session_id:
-                        asyncio.ensure_future(
+                        # Held in the owner's set: the loop keeps only a weak
+                        # reference to a task, so an unreferenced one can be
+                        # garbage-collected before the cleanup finishes.
+                        task = asyncio.ensure_future(
                             self._owner._safe_cleanup(session.provider, session_id)
                         )
+                        self._owner._background_tasks.add(task)
+                        task.add_done_callback(self._owner._background_tasks.discard)
                 except Exception:
                     self._deps.logger.debug("Failed to get session_id for cleanup", exc_info=True)
             try:
@@ -1200,9 +1207,12 @@ class SessionAllocationService:
                 # Off this synchronous call, as ``wake_other_drains`` requires.
                 channels = [entry_channel(e[2]) for e in session.queue]
                 if any(channels):
-                    task = asyncio.ensure_future(
-                        wake_other_drains(waker="", session_key=key, channels=channels)
-                    )
+                    from kiro_crew.shared_crew.turn_gate import independent_turn
+
+                    with independent_turn():
+                        task = asyncio.ensure_future(
+                            wake_other_drains(waker="", session_key=key, channels=channels)
+                        )
                     self._owner._background_tasks.add(task)
                     task.add_done_callback(self._owner._background_tasks.discard)
 

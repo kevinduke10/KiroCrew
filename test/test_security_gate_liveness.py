@@ -588,7 +588,17 @@ def _url_payload_command(n: int) -> str:
 #: their comments and their manifest lines; the exemption only narrows.
 #: Raised again, from 32,899, for ``redaction.py``'s hold on a whole SRI digest that a
 #: streamed delta cuts: it is counted on top of the ARN exemption above.
-_PACKAGE_LINE_BUDGET = 32_909
+#: Raised again, from 32,909, for ``redaction.py``'s ELB target-group exemption in the
+#: bare-secret pass: the closed ``_ELB_TARGET_GROUP_ARN_RE`` shape, its two span
+#: helpers, the lazy lookup in pass 3 that honours ``judged_sri_values``, and their
+#: comments; the exemption only narrows what pass 3 redacts.
+#: Raised by 177, from 32,970, for the ``rm`` floor reading each nested-shell payload
+#: through the shared reader, and ``shell_commands.redirect_hidden_payloads``: a redirect
+#: before the ``-c`` operand hides no payload. Deny-only: no allow widened.
+#: Raised by 25, from 33,147, for ``rm_floor._expands_nothing`` and
+#: ``_literal_shell_script``: a single-quoted ``\\$`` stays literal only in a lone
+#: ``<shell> -c`` / ``<<<`` script that expands nothing, judged once per command.
+_PACKAGE_LINE_BUDGET = 33_172
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second

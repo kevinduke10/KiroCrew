@@ -70,6 +70,7 @@ import {
   openCrewWindow, closeCrewWindow, useCrewWindow, reloadCrewWindowForTest, writeCrewDraft,
   capsRetryInterval,
 } from '../pages/chat/crew-window/crewWindowStore'
+import { crewModePreviewOn } from './crewModePreview'
 
 class FakeEventSource {
   static all: FakeEventSource[] = []
@@ -187,7 +188,17 @@ describe('CrewChatWindow', () => {
   it('offers voice input in the composer', async () => {
     detail = { running: false, messages: [{ role: 'user', content: 'hi', ts: 't1' }] }
     renderWindow()
-    expect(await screen.findByRole('button', { name: 'Voice input' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^Voice input/ })).toBeInTheDocument()
+  })
+
+  // The window does not own the push-to-talk key (the main composer does), so
+  // its mic must not name the key: pressing it would dictate elsewhere.
+  it('does not name the push-to-talk key on its mic', async () => {
+    detail = { running: false, messages: [{ role: 'user', content: 'hi', ts: 't1' }] }
+    renderWindow()
+    const mic = await screen.findByRole('button', { name: 'Voice input' })
+    expect(mic).toHaveAttribute('title', 'Voice input')
+    expect(mic).not.toHaveAttribute('aria-keyshortcuts')
   })
 
   it('keeps Stop reachable while an approval is pending', async () => {
@@ -1279,3 +1290,6 @@ describe('CrewChatWindow', () => {
     expect(FakeEventSource.all[0].close).toHaveBeenCalled()
   })
 })
+
+// Last, after the file's own hooks that clear localStorage: Crew Mode is a feature preview.
+crewModePreviewOn()

@@ -263,6 +263,7 @@ _BASE_SLOT_MEMBERS: dict[str, tuple[str, bool, bool, str]] = {
     "pending_has_consumer": ("property", False, False, "(self) -> 'bool'"),
     "pin_completed_todo_rows": ("function", False, False, "(self) -> 'None'"),
     "purge_chunks": ("function", False, False, "(self) -> 'int'"),
+    "project": ("property", False, False, "(self) -> 'str'"),
     "push_wire_frame": ("function", False, False, "(self, cls: 'str', content: 'str') -> 'None'"),
     "queue_append": (
         "function",
@@ -270,7 +271,7 @@ _BASE_SLOT_MEMBERS: dict[str, tuple[str, bool, bool, str]] = {
         False,
         "(self, content: 'str', kind: 'str' = '', meta: 'dict | None' = None, *, "
         "directive_user_origin: 'bool' = False, directive_channel_origin: 'bool' = "
-        "False) -> 'str'",
+        "False, directive_owner_origin: 'bool' = False) -> 'str'",
     ),
     "queue_depth": ("property", False, False, "(self) -> 'int'"),
     "queue_edit_by_id": (
@@ -278,7 +279,8 @@ _BASE_SLOT_MEMBERS: dict[str, tuple[str, bool, bool, str]] = {
         False,
         False,
         "(self, queue_id: 'str', content: 'str', *, directive_user_origin: "
-        "'bool' = False, directive_channel_origin: 'bool' = False) -> 'bool'",
+        "'bool' = False, directive_channel_origin: 'bool' = False, "
+        "directive_owner_origin: 'bool' = False) -> 'bool'",
     ),
     "queue_insert": (
         "function",
@@ -288,7 +290,8 @@ _BASE_SLOT_MEMBERS: dict[str, tuple[str, bool, bool, str]] = {
         "meta: 'dict | None' = None, on_consumed: 'Callable[[bool], None] | None' = "
         "None, on_irreversibly_consumed: 'Callable[[], Awaitable[None] | None] | "
         "None' = None, directive_user_origin: 'bool' = False, "
-        "directive_channel_origin: 'bool' = False) -> 'str'",
+        "directive_channel_origin: 'bool' = False, directive_owner_origin: 'bool' = "
+        "False) -> 'str'",
     ),
     "queue_persist_pending": ("property", False, False, "(self) -> 'bool'"),
     "queue_pop": ("function", False, False, "(self, index: 'int' = 0) -> 'dict[str, Any]'"),
@@ -401,6 +404,7 @@ _BASE_SLOT_DEFAULTS: dict[str, tuple[str, str | None]] = {
     "_approval_stopped": ("value", "set()"),
     "_artifact": ("value", "''"),
     "_auto_tagged": ("value", "False"),
+    "_binding": ("type", "kiro_crew.dashboard.transcript_binding.TranscriptBinding"),
     "_batch_rejected": ("value", "False"),
     "_batch_rejected_cause": ("value", "''"),
     "_buffers": ("type", "kiro_crew.dashboard.slot_buffers.SlotBufferCoordinator"),
@@ -418,6 +422,7 @@ _BASE_SLOT_DEFAULTS: dict[str, tuple[str, str | None]] = {
     "_compaction_failed_retries": ("value", "0"),
     "_coordinator_approvals": ("value", "None"),
     "_created_by": ("value", "''"),
+    "_attribution": ("value", "None"),
     "_created_by_sid": ("value", "''"),
     "_crew_log_opened_sid": ("value", "''"),
     "_crew_log_pending_channel": ("value", "False"),
@@ -573,6 +578,7 @@ _BASE_SLOT_DEFAULTS: dict[str, tuple[str, str | None]] = {
     "_steer_automation": ("value", "{}"),
     "_steer_channel_origin": ("value", "{}"),
     "_steer_clear": ("value", "None"),
+    "_steer_owner_origin": ("value", "{}"),
     "_steer_confirmed": ("value", "set()"),
     "_steer_decision_strips": ("value", "{}"),
     "_steer_delivery_ids": ("value", "{}"),
@@ -631,6 +637,7 @@ _BASE_SLOT_DEFAULTS: dict[str, tuple[str, str | None]] = {
     "_turn_generation": ("value", "0"),
     "_turn_in_flight_generation": ("value", "0"),
     "_turn_in_flight_prompt": ("value", "None"),
+    "_turn_owner_sent": ("value", "False"),
     "_turn_reply_mids": ("value", "[]"),
     "_turn_retries": ("value", "{}"),
     "_turn_timeout_hydrated": ("value", "True"),
@@ -672,7 +679,6 @@ _BASE_SLOT_DEFAULTS: dict[str, tuple[str, str | None]] = {
     "muted": ("value", "False"),
     "mutes_opened": ("value", "False"),
     "pinned": ("value", "False"),
-    "project": ("value", "''"),
     "remote_slot": ("value", "''"),
     "replays": ("type", "kiro_crew.dashboard.recovery_replays.RecoveryReplays"),
     "segment_message_id": ("value", "''"),

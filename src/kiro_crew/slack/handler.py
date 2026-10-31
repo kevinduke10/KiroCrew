@@ -194,6 +194,13 @@ from kiro_crew.session_lifecycle import (  # noqa: F401 - read by the owners
     consume_stop_declined,
     decline_stop,
 )
+from kiro_crew.slack.agent_sessions.fence import (  # noqa: F401 - read by the owners
+    _Reset as _TurnScopeReset,
+)
+from kiro_crew.slack.agent_sessions.fence import (
+    enter_turn,
+    exit_turn,
+)
 from kiro_crew.slack.blocks import (  # noqa: F401 - read by the owners
     build_working_blocks,
     deprecation_warning_block,
@@ -296,6 +303,9 @@ from kiro_crew.slack.handler_runtime.delivery import (  # noqa: F401
 from kiro_crew.slack.handler_runtime.dispatch import (  # noqa: F401
     _dispatch_before_turn,
     _handle_sessions_command,
+    _is_bang_command,
+    _is_control_message,
+    _message_command_text,
     maybe_handle_keyword_command,
 )
 from kiro_crew.slack.handler_runtime.finalize import (  # noqa: F401
@@ -937,6 +947,19 @@ async def handle_message(
     attachment files the original text refers to -- their cleanup runs when the
     OUTER call's task ends, after this nested call has returned.
     """
+    # Shared Crew fair admission: with it on, a model message re-enters this
+    # handler inside its admitted run. Control commands keep their sender gates.
+    _sc_args = dict(locals())
+    from kiro_crew.shared_crew import turn_gate as _sc_turn_gate
+
+    if (
+        _compaction_replay is None
+        and not _is_control_message(text)
+        and not _sc_turn_gate.in_channel_turn()
+        and await _sc_turn_gate.admission_on()
+    ):
+        await _sc_turn_gate.run_slack_message(handle_message, _sc_args)
+        return
     Stats().inc_message_received()
     _t0 = time.monotonic()
     # reply_ts is the true Slack thread timestamp (used for posting replies and
@@ -1031,6 +1054,9 @@ async def handle_message(
         # shutdown ``cancel_background_tasks`` may stop it, best-effort.
         track_background_task(asyncio.create_task(turn.clear_working_indicators()))
         raise
+    finally:
+        # Native Stop's write fence, opened by _run_turn, closes after the answer.
+        turn.close_turn_scope()
 
 
 # ── Slack thread auto-title ─────────────────────────────────────────────

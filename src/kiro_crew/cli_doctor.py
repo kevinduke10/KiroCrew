@@ -90,6 +90,7 @@ from kiro_crew.agent_discovery import (
     project_agent_name,
 )
 from kiro_crew.agent_sdk import kas_bundle, kas_engine_gap
+from kiro_crew.agent_sdk.backends import ACP_BACKEND_KIRO
 from kiro_crew.agent_sdk.provider_identity import is_claude_code
 from kiro_crew.agent_spec_format import (  # noqa: F401
     NATIVE_SKILL_ALIAS_PREFIX,
@@ -340,10 +341,12 @@ if TYPE_CHECKING:  # served by ``__getattr__`` at runtime; named here for mypy
         _doctor_run_dirs,
         _doctor_runtime_tmpfs,
         _doctor_skill_view_census,
+        _doctor_temp_directories,
         _gateway_memory_lines,
         _runtime_tmpfs_roots,
         _scan_cli_installer_residue,
         _swap_total_kib,
+        _tmpfiles_ages,
         _tmpfs_usage,
     )
     from kiro_crew.doctor_checks.services import (  # noqa: F401
@@ -730,6 +733,9 @@ def _doctor(platform_boot_error: "Exception | None" = None, bundle: bool = False
     # ── Runtime tmpfs headroom (sandbox mount-source roots; Linux only) ──
     resources._doctor_runtime_tmpfs(issues)
 
+    # ── Temp directory in use (filesystem / tmpfs-no-swap / age-cleaned; advisory) ──
+    resources._doctor_temp_directories(issues)
+
     # ── kiro-cli installer residue (silent unless residue is on disk) ──
     resources._doctor_cli_installer_residue(issues)
 
@@ -881,6 +887,28 @@ def _doctor(platform_boot_error: "Exception | None" = None, bundle: bool = False
             print("  kiro-cli:    ⚠️  exits with error (optional backend)")
     else:
         print("  kiro-cli:    ⏭  skipped (not installed)")
+    # The launcher answers ``--version`` itself; this row asks the chat binary
+    # every session actually execs, which is what a stale install breaks. It is
+    # fatal only when a harness that spawns kiro-cli is selected for either role:
+    # the Kiro CLI backend, or KAS served through kiro-cli's relay, as the main
+    # backend or as the crewmate backend. Both fields arrive already resolved by
+    # the loader's selection gate, so an unservable crewmate pick reads here as
+    # the Kiro CLI floor it actually runs on. Positive tests, so a harness added
+    # later does not inherit a fatal row for a binary it never runs.
+    # When Crew's vault signs relay KAS in, its spawn enters through the
+    # launcher's sibling chat binary instead (``services.kas_relay_entry``), so
+    # that binary is probed for the relay role while the launcher's delegate
+    # is still probed for a selected Kiro CLI role.
+    selected = (cfg.agent.acp_backend, cfg.agent.member_acp_backend)
+    kiro_role = ACP_BACKEND_KIRO in selected
+    relay_kas_role = not cfg.agent.kas_bundle and ACP_BACKEND_KAS in selected
+    services._doctor_kiro_chat_delegate(
+        kiro,
+        issues,
+        required=kiro_role or relay_kas_role,
+        relay_entry=services.kas_relay_entry(kiro) if relay_kas_role else None,
+        kiro_role=kiro_role,
+    )
     services._doctor_gateway_reachability(dashboard, issues)
 
     # ── Summary ──
@@ -1011,10 +1039,12 @@ _EXPORTS: dict[str, str] = {
             "_doctor_run_dirs",
             "_doctor_runtime_tmpfs",
             "_doctor_skill_view_census",
+            "_doctor_temp_directories",
             "_gateway_memory_lines",
             "_runtime_tmpfs_roots",
             "_scan_cli_installer_residue",
             "_swap_total_kib",
+            "_tmpfiles_ages",
             "_tmpfs_usage",
         ),
         "kiro_crew.doctor_checks.resources",

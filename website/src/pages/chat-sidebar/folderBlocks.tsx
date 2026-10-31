@@ -22,6 +22,7 @@ import { collectFolderSubtreeIds, folderNameText } from '../../utils/folderTree'
 import type { ChatFolder } from '../../types'
 import { i18nT } from '../../i18n/t'
 import { PrivateChatRow } from './PrivateChatRow'
+import { MateFolderFace, isMateManaged } from './MateFolderFace'
 import { ParentFolderDropTarget, SortableSubfolderBlock } from './dnd/targets'
 import type { Slot } from './types'
 import { detectFolderConductor } from './folderConductor'
@@ -29,6 +30,7 @@ import { sessionRowIdentity } from './rowIdentity'
 import { DisclosureChevron, FOLDER_BODY_CLS, FOLDER_BODY_OPEN_PADDING, FOLDER_ROW_STICKY_Z, PinnedSessionDivider, createTabModeForClick } from './chrome'
 import type { LaneRows } from './laneRows'
 import type { SidebarScope } from './scope'
+import { KindSectionHeader, sectionHeaders, sectionRankOf, sectionRows } from './kindSections'
 import OfflineMenuReason from '../../components/OfflineMenuReason'
 import { offlineMenuRow, offlineProps } from '../../utils/offline'
 
@@ -42,7 +44,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
     isFolderHidden, listNarrowed, moveFolderTo, onMenuCloseAutoFocus, onOpenSlotInNewTab, onSelectSlot,
     pinned, renameCommit, renderSessionRow, renderStaleSection, revealFlash, revealedContainers,
     searchRanked, setEditName, setEditScope, setEditingId, setFolderCreateError, setFolderModal, setFolderOfflineNotice, sidebarRows,
-    slotFilter, slotFolders, splitStale, staleExpanded, startsAutomaticSection, suppressMenuRestore,
+    slotFilter, slotFolders, splitStale, staleExpanded, startsAutomaticSection, suppressMenuRestore, kindSections,
     toggleCollapse, toggleFolderFilter, toggleReveal, unreadSet, updateFolderMutation } = shell
   /**
    * The session CONDUCTING a folder, derived from the folder's own rows.
@@ -367,11 +369,14 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
     const focusListFolderRow = () => {
       document.querySelector<HTMLElement>(`[data-folder-row="${folder.id}"]`)?.focus({ preventScroll: true })
     }
-    const draggable = !!dragHandleProps && editingId !== folder.id
+    // A mate's folder is managed for the person: open and collapse only.
+    const mateManaged = isMateManaged(folder, folders)
+    const draggable = !!dragHandleProps && editingId !== folder.id && !mateManaged
     // Valid "Move folder to" destinations: everything outside this folder's
     // own subtree (cycle guard). One O(1) lookup, computed once per row.
     const subtreeIds = folderSubtrees.get(folder.id) ?? collectFolderSubtreeIds(folders, folder.id)
-    const reparentTargets = folders.filter(f => !subtreeIds.has(f.id))
+    // A mate's folder takes no folder moved into it, so it is no destination.
+    const reparentTargets = folders.filter(f => !subtreeIds.has(f.id) && !isMateManaged(f, folders))
     // Reveal confirmation for THIS folder. The `kind` check is what keeps a
     // session reveal from lighting up a folder whose id equals that slot key.
     const folderFlash = revealFlash?.kind === 'folder' && revealFlash.key === folder.id
@@ -389,7 +394,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
       // button. Rename mode opts out so a right-click in the name input keeps the
       // browser's own edit menu (cut/paste).
       <ContextMenu key={`folder-header-${folder.id}`}>
-        <ContextMenuTrigger asChild disabled={editingId === folder.id && editScope === 'list'}>
+        <ContextMenuTrigger asChild disabled={mateManaged || (editingId === folder.id && editScope === 'list')}>
       <div
         // The reveal target for this folder (command palette Folders tab), and the
         // only marker that identifies a folder ROW. Deliberately not the existing
@@ -522,7 +527,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
                *  binding the glyph to that alone would draw the closed shape on an
                *  inert row - this product's "click to expand" affordance on a row
                *  that cannot expand. An inert row is always drawn open. */}
-              <FolderGlyph color={folder.color} icon={folder.icon} size={14} open={!collapsed || emptyRow}
+              <MateFolderFace folder={folder} open={!collapsed || emptyRow}
                 className={emptyRow ? 'shrink-0 text-muted/40 transition-colors' : undefined}
                 testId={`folder-collapse-${folder.id}`} />
               {/* Double-click rename is a mouse-only power shortcut; the accessible
@@ -538,7 +543,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
                *  nothing to mark — are untouched, and that difference is itself the
                *  cue: the marked row is the one that explains the result. */}
               {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-              <span className="flex-1 text-[13px] font-medium text-text truncate text-left" title={i18nT('pages.chatSidebar.double_click_to_rename')} {...offlineProps(connected, i18nT('utils.offline.rename_folders'))} onDoubleClick={e => { e.stopPropagation(); if (!connected) { setFolderOfflineNotice(i18nT('utils.offline.gateway_offline_reconnect', { action: i18nT('utils.offline.rename_folders') })); return } setEditingId(folder.id); setEditScope('list'); setEditName(folder.name) }}>{highlightText(folderNameText(folder), slotFilter.trim(), false, -1)}</span>
+              <span className="flex-1 text-[13px] font-medium text-text truncate text-left" title={mateManaged ? undefined : i18nT('pages.chatSidebar.double_click_to_rename')} {...(mateManaged ? {} : offlineProps(connected, i18nT('utils.offline.rename_folders')))} onDoubleClick={e => { e.stopPropagation(); if (mateManaged) return; if (!connected) { setFolderOfflineNotice(i18nT('utils.offline.gateway_offline_reconnect', { action: i18nT('utils.offline.rename_folders') })); return } setEditingId(folder.id); setEditScope('list'); setEditName(folder.name) }}>{highlightText(folderNameText(folder), slotFilter.trim(), false, -1)}</span>
               {/* Channel-owned folder (created by per-channel session filing):
                *  show the channel's brand mark so the folder reads as "these are
                *  the Discord conversations" at a glance. Guarded the same way the
@@ -582,7 +587,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
           *  is what an empty folder usually wants), and an empty folder holds no
           *  sessions, so it resolves no conductor and the third control below is
           *  never emitted on it. */}
-        {!(editingId === folder.id && editScope === 'list') && (
+        {!mateManaged && !(editingId === folder.id && editScope === 'list') && (
         <div className={`transition-all flex items-center gap-0.5 rounded-md group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 has-[[data-state=open]]:opacity-100${emptyRow ? ' shrink-0 -my-1' : ' absolute top-1/2 -translate-y-1/2 right-1.5 p-1 bg-card border border-border shadow-sm opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:static [@media(hover:none)]:translate-y-0 [@media(hover:none)]:shrink-0 [@media(hover:none)]:-my-1 [@media(hover:none)]:p-0 [@media(hover:none)]:bg-transparent [@media(hover:none)]:border-transparent [@media(hover:none)]:shadow-none'}`}>
           {/* ⋯ menu first, then the primary "new chat" action.  Sibling
            *  <button>s of the collapse toggle (valid ARIA — no nesting). */}
@@ -712,7 +717,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
           *  child-row pixels and the child body keep their own droppable. A
           *  session already filed directly here gets no no-op target. */}
         {activeDrag?.type === 'session' && !collapsed && childFolders.length > 0
-          && slotFolders[activeDrag.id] !== folder.id
+          && slotFolders[activeDrag.id] !== folder.id && !mateManaged
           && <ParentFolderDropTarget folder={folder} depth={depth} />}
       </div>
         </ContextMenuTrigger>
@@ -834,7 +839,8 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
     const { fresh: freshChildSlotsRaw, stale: staleChildSlots } = splitStale(childSlots)
     // Stale rows are collapsed into their own section and are stale precisely
     // because nothing is bumping them, so only the live list needs the hold.
-    const { rows: freshChildSlots, navScope: treeChildScope, container: treeChildContainer } = heldLane(freshChildSlotsRaw, 'list', `tree:folder:${folder.id}`)
+    const { rows: freshChildSlots, navScope: treeChildScope, container: treeChildContainer } = heldLane(sectionRows(freshChildSlotsRaw, sidebarRows.isPinned, kindSections), 'list', `tree:folder:${folder.id}`, undefined, sectionRankOf(sidebarRows.isPinned, kindSections))
+    const childHeaders = sectionHeaders(freshChildSlots, sidebarRows.isPinned, kindSections)
     /**
      * The pinned conductor card: the folder body's FIRST child, before the
      * sibling folders and before the sorted rows.
@@ -877,13 +883,15 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
       const isActive = isActiveRow(s)
       const nextIsActive = isActiveRow(freshChildSlots[i + 1])
       const showDivider = i < freshChildSlots.length - 1 && !isActive && !nextIsActive
-        && !startsAutomaticSection(freshChildSlots, i + 1)
+        && !startsAutomaticSection(freshChildSlots, i + 1) && !childHeaders[i + 1]
       if (startsAutomaticSection(freshChildSlots, i)) {
         // Keyed by the row it precedes, as the Fragment lanes key theirs. A
         // frame with two pinned-to-unpinned boundaries then gives each divider
         // its own key, and React removes the one that goes away.
         childNodes.push(<PinnedSessionDivider key={`pinned-divider-${sessionRowIdentity(s)}`} />)
       }
+      const kindHeader = childHeaders[i]
+      if (kindHeader) childNodes.push(<KindSectionHeader key={`kind-section-${kindHeader}-${folder.id}`} kind={kindHeader} />)
       childNodes.push(renderSessionRow(s, depth + 1, showDivider, treeChildScope, treeChildScope, treeChildContainer))
     })
     if (!searchRanked && staleExpanded.has(folder.id)
@@ -928,7 +936,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
         <FolderRail name={folder.name} id={folder.id} onToggle={e => toggleListFolderCollapse(folder, e.currentTarget)} />
         {childNodes}
       </div>
-    ) : emptyBody || listNarrowed ? null : (
+    ) : emptyBody || listNarrowed || isMateManaged(folder, folders) ? null : (
       // Default: the empty-folder affordance stays exactly as it was. A newly
       // created (or emptied) expanded folder would otherwise render nothing,
       // leaving the hover-only create control on the header as the only
@@ -956,7 +964,7 @@ export function createFolderBlocks(shell: SidebarScope & LaneRows) {
     // folders fire enter/leave pairs that balance to zero when the drag
     // moves into a subfolder, so the parent highlight clears correctly.
     return [
-      <DndDroppable key={`folder-drop-${folder.id}`} id={`folder-drop:${folder.id}`} data={{ type: 'folder-drop', folderId: folder.id }}>
+      <DndDroppable key={`folder-drop-${folder.id}`} id={`folder-drop:${folder.id}`} data={{ type: 'folder-drop', folderId: folder.id }} disabled={isMateManaged(folder, folders)}>
         {({ setNodeRef, isOver }) => (
           // `--folder-pin-stack` is how far the pinned headers above this block's
           // rows reach down the lane (this header plus every ancestor's), so a

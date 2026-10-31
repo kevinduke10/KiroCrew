@@ -287,7 +287,7 @@ def spawn(
     _agent_prevalidated: bool = False,
     _from_queue: bool = False,
     _preassigned_id: str = "",
-    _crew_log_asked: "tuple[str, int] | None" = None,
+    _crew_log_asked: "tuple[str, int, int] | None" = None,
     _memory_mode: str | None = None,
     _store_accepted: bool = False,
     _stop_before_claim: bool = False,
@@ -307,6 +307,7 @@ def spawn(
     _recovering_row: bool = False,
     _stop_before_memory_read: bool = False,
     _memory_reading: "tuple[float, str] | None" = None,
+    _depth: int | None = None,
 ) -> SubagentInfo | None:
     result = self._admission.spawn_impl(
         task,
@@ -351,6 +352,7 @@ def spawn(
         _recovering_row=_recovering_row,
         _stop_before_memory_read=_stop_before_memory_read,
         _memory_reading=_memory_reading,
+        _depth=_depth,
     )
     assert not isinstance(result, PreparedSpawn)
     # Every synchronous gate return (started, queued, or refused) receives

@@ -501,8 +501,9 @@ def _read_app_agent_owner(r: _Read) -> None:
 
 
 def _read_project(r: _Read) -> None:
-    if r.meta.get("project"):
-        r.slot.project = r.meta["project"]
+    from kiro_crew.dashboard.transcript_binding import seed_project_from_disk
+
+    seed_project_from_disk(r.state, r.slot, r.meta.get("project") or "")
 
 
 def _read_executor(r: _Read) -> None:
@@ -545,6 +546,22 @@ def _read_created_by(r: _Read) -> None:
         # so the session follows its creator's next mode change again. A raise
         # still needs the crew log's creation record (``approval_inheritance``).
         r.slot._posture_inherited = True
+
+
+def _read_attribution(r: _Read) -> None:
+    # Shared Crew creator attribution. A line with no key reads as legacy and
+    # stays legacy, so a later stamp can never invent a creator for it.
+    # Function-local: the chat_persistence facade's import closure stays unchanged.
+    from kiro_crew.shared_crew import attribution as shared_crew_attribution
+
+    shared_crew_attribution.restore_from_metadata(r.slot, r.meta)
+
+
+def _attribution_value(slot: Any, folds: SaveFolds) -> object:
+    from kiro_crew.shared_crew import attribution as shared_crew_attribution
+
+    value = shared_crew_attribution.metadata_value(slot)
+    return OMIT if value is None else value
 
 
 def _read_folder_id(r: _Read) -> None:
@@ -985,6 +1002,16 @@ FIELDS: tuple[Field, ...] = (
             "it after the build when lineage corroborates"
         ),
     ),
+    # Shared Crew session creator. Write-once: the slot holds the first value
+    # stamped or read (``shared_crew.attribution``), and no writer owns the key,
+    # so a save that does not write it carries the stored value unchanged.
+    Field(
+        "attribution",
+        _ALL,
+        line=_attribution_value,
+        merge=_attribution_value,
+        read=_read_attribution,
+    ),
     Field(
         "folder_id",
         _ALL,
@@ -1289,6 +1316,7 @@ LINE_ORDER: tuple[str, ...] = (
     "app",
     "origin",
     "created_by",
+    "attribution",
     "artifact",
     "pinned",
     "mutes_opened",
@@ -1342,6 +1370,7 @@ MERGE_ORDER: tuple[str, ...] = (
     "app",
     "origin",
     "created_by",
+    "attribution",
     "linked_session_key",
     "channel_origin",
     "forked_from",
@@ -1476,6 +1505,10 @@ def apply(
     for row in FIELDS:
         if row.read is not None and purpose.purpose in row.purposes:
             row.read(read)
+    # The link row has run, so the history key is final: join a live alias on it.
+    from kiro_crew.dashboard.transcript_binding import bind_transcript
+
+    bind_transcript(state, slot)
     # The line's creator, for display on every purpose. Not ``_created_by``, whose
     # purposes stay as the ``created_by`` row declares: the line is agent-editable,
     # so this copy only places a Crew Mode worker under its root in the person's

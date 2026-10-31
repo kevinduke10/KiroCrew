@@ -214,6 +214,7 @@ from kiro_crew.config.sections_dashboard import (  # noqa: F401
     CHAT_ENTRY_CACHE_ENTRIES_MAX,
     CHAT_ENTRY_CACHE_ENTRIES_MIN,
     EXTERNAL_TERMINAL_APPS,
+    FEATURE_PREVIEW_FLAGS,
     LEGACY_VERBOSITY_ALIASES,
     LINK_PATTERN_PATTERN_MAX_LEN,
     LINK_PATTERN_URL_MAX_LEN,
@@ -358,6 +359,7 @@ from kiro_crew.config.sections_shared_crew import (  # noqa: F401
     EffectiveLimits,
     SharedCrewConfig,
     effective_limits,
+    load_shared_crew_config,
     shared_crew_config_from,
 )
 from kiro_crew.config.sections_slack import (  # noqa: F401

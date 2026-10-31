@@ -83,6 +83,7 @@ class _ChatTurn:
     _directive_loop_gen: "int"
     _skill_trigger_text: "str | None"
     _directive_channel_origin: "bool"
+    _directive_owner_origin: "bool"
     _commands_off: "bool"
     _recovery_echo_owed: "bool"
     _turn_actor: "str"
@@ -236,6 +237,7 @@ class _ChatTurn:
     _turn_elapsed_ms: "int"
     _turn_emitted: "bool"
     _turn_flushed_visible_text: "bool"
+    _turn_footer_attached: "bool"
     _turn_is_completion: "bool"
     _turn_landed: "bool"
     _turn_model: "str"
@@ -320,6 +322,7 @@ class _ChatTurn:
         _directive_loop_gen: "int",
         _skill_trigger_text: "str | None",
         _directive_channel_origin: "bool",
+        _directive_owner_origin: "bool",
         _commands_off: "bool",
         _recovery_echo_owed: "bool",
         _turn_actor: "str",
@@ -350,6 +353,7 @@ class _ChatTurn:
         self._directive_loop_gen = _directive_loop_gen
         self._skill_trigger_text = _skill_trigger_text
         self._directive_channel_origin = _directive_channel_origin
+        self._directive_owner_origin = _directive_owner_origin
         self._commands_off = _commands_off
         self._recovery_echo_owed = _recovery_echo_owed
         self._turn_actor = _turn_actor

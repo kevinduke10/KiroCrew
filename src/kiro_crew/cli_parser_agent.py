@@ -18,7 +18,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kiro_crew import cli_help
-from kiro_crew.config.loader import DASHBOARD_PORT
+from kiro_crew.cli_arg_types import positive_int
 from kiro_crew.cron_service.model import _AUTO_PAUSE_MAX, _AUTO_PAUSE_THRESHOLD
 
 if TYPE_CHECKING:
@@ -36,17 +36,6 @@ _AUTO_PAUSE_AFTER_HELP = (
 
 # Helper for commands with examples
 _fmt = argparse.RawDescriptionHelpFormatter
-
-
-def _positive_int(value: str) -> int:
-    """An argparse ``type`` for a count or number that starts at 1."""
-    try:
-        number = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"must be a whole number, got {value!r}") from None
-    if number < 1:
-        raise argparse.ArgumentTypeError(f"must be 1 or more, got {number}")
-    return number
 
 
 def register_chat_parser(sub: _Commands, _jail_opts: argparse.ArgumentParser) -> None:
@@ -377,7 +366,12 @@ Examples:
         help="Run on this model id; it outranks the member's and the template's pin",
     )
     spawn_sub.add_parser("list", help="List subagents")
-    spawn_parser.add_argument("--port", type=int, default=DASHBOARD_PORT, help="Dashboard port")
+    spawn_parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Dashboard port (default: found as `kirocrew status` finds it)",
+    )
 
 
 def register_run_parser(sub: _Commands, _jail_opts: argparse.ArgumentParser) -> None:
@@ -417,9 +411,10 @@ Examples:
         default=0,
         help="Global timeout in seconds (0 = no limit)",
     )
-    run_parser.add_argument(
-        "--port", type=int, default=DASHBOARD_PORT, help="Dashboard port for status"
-    )
+    # Nothing in `kirocrew run` reads --port: the task runner reports to this
+    # terminal, never to a dashboard. It is still accepted so a script that
+    # passes it keeps parsing, and help does not offer it.
+    run_parser.add_argument("--port", type=int, default=None, help=argparse.SUPPRESS)
 
 
 def register_knowledge_parser(sub: _Commands) -> None:
@@ -552,7 +547,7 @@ Examples:
     art_show = art_sub.add_parser("show", help="Print an artifact's content")
     art_show.add_argument("slug", help="Artifact slug")
     art_show.add_argument(
-        "--version", type=_positive_int, help="Specific version, 1 or more (default: current)"
+        "--version", type=positive_int, help="Specific version, 1 or more (default: current)"
     )
     art_show.add_argument(
         "--meta",
@@ -722,7 +717,9 @@ def register_memory_parser(sub: _Commands) -> None:
         "retired", help="List episodes a semantic write superseded, and restore one"
     )
     mem_retired.add_argument("--restore", dest="restore_id", default=None, help="Restore this id")
-    mem_retired.add_argument("--limit", type=int, default=20, help="How many to list")
+    mem_retired.add_argument(
+        "--limit", type=positive_int, default=20, help="How many to list (default: 20)"
+    )
     mem_forget = mem_sub.add_parser(
         "forget",
         help="Delete one semantic memory key after you confirm it (owner only; "

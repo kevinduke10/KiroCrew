@@ -703,6 +703,7 @@ __all__ = sorted(name for name in set(globals()) | set(_EXPORTS) if not name.sta
 if TYPE_CHECKING:  # every owner-defined name this module forwards, for type checkers
     from kiro_crew.config.loader_agents import (  # noqa: F401
         _crew_autocompact_pct,
+        _crew_key_for_member_id,
         _resolve_agent_selection,
         _workspace_name_for_dir,
         crew_autocompact_pct,
@@ -724,6 +725,7 @@ if TYPE_CHECKING:  # every owner-defined name this module forwards, for type che
         _crew_mode_agent_or_default,
         _default_memory_mode_from,
         _default_session_folder_or_empty,
+        _feature_previews,
         _folder_sort_from,
         _jira_auth_entry,
         _load_idle_exempt_keys,

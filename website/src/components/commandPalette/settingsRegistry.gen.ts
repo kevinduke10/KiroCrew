@@ -50,6 +50,20 @@ export const SETTINGS_REGISTRY: SettingEntry[] =
     "configKey": "dashboard.use_builtin_browser"
   },
   {
+    "id": "channels.agent-sessions-slack",
+    "label": "Agent sessions (Slack)",
+    "labelKey": "pages.settings.slackPanel.slackCode.agent_sessions",
+    "labelSuffix": "Slack",
+    "description": "Slack threads show a live status and title, and a Stop button that stops the agent's current reply.",
+    "tab": "channels",
+    "type": "toggle",
+    "occurrence": 1,
+    "params": {
+      "channel": "slack"
+    },
+    "configKey": "slack.agent_sessions"
+  },
+  {
     "id": "channels.allowed-emails-webex",
     "label": "Allowed emails (Webex)",
     "labelKey": "pages.settings.webexPanel.allowed_emails",
@@ -574,7 +588,7 @@ export const SETTINGS_REGISTRY: SettingEntry[] =
     "label": "Owner Slack member ID (Slack)",
     "labelKey": "pages.settings.slackPanel.owner_slack_member_id",
     "labelSuffix": "Slack",
-    "description": "The one member who can always interact with the bot (KIROCREW_OWNER_ID). Starts with U or W.",
+    "description": "Your Slack member ID (KIROCREW_OWNER_ID): in Slack, open your profile, select ⋮, then Copy member ID. Starts with U or W.",
     "tab": "channels",
     "type": "input",
     "occurrence": 1,
@@ -1770,6 +1784,18 @@ export const SETTINGS_REGISTRY: SettingEntry[] =
     "description": "Client ID, client secret and redirect URI for a provider that needs a registered OAuth app"
   },
   {
+    "id": "developer.agent-harness-per-mate",
+    "label": "Agent harness per mate",
+    "labelKey": "pages.developer.featurePreviewsTab.crewmate_harness",
+    "description": "Adds an Agent harness setting to each mate's profile, so one mate can run on a different AI coding tool, such as Claude Code, with that tool's models, while the rest keep the default.",
+    "tab": "developer",
+    "type": "toggle",
+    "occurrence": 1,
+    "params": {
+      "sub": "feature-previews"
+    }
+  },
+  {
     "id": "developer.also-send-snippets-of-recalled-memories-so-jev-can-drop-the-ones-that-do-not-help",
     "labelKey": "pages.developer.featurePreviewsTab.decisions_memory_text",
     "tab": "developer",
@@ -1955,6 +1981,18 @@ export const SETTINGS_REGISTRY: SettingEntry[] =
     "label": "Session Environments",
     "labelKey": "sessionEnvironments.title",
     "description": "Shows the Session Environments settings. Existing chats stay on this machine; a chat moves only if you pick a profile for it before its first message.",
+    "tab": "developer",
+    "type": "toggle",
+    "occurrence": 1,
+    "params": {
+      "sub": "feature-previews"
+    }
+  },
+  {
+    "id": "developer.ultra-mode",
+    "label": "Ultra Mode",
+    "labelKey": "pages.developer.featurePreviewsTab.crew_mode",
+    "description": "Lets a chat hand tasks to a crew and track them on a Board.",
     "tab": "developer",
     "type": "toggle",
     "occurrence": 1,

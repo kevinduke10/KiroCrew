@@ -10,6 +10,7 @@ import SegmentedControl from './SegmentedControl'
 import SimpleSelect from './SimpleSelect'
 import type { ChatFolder, CronJob } from '../types'
 import { orderFoldersWithPaths } from '../utils/folderTree'
+import { isMateManaged } from '../utils/mateFolders'
 import { useFolderSortMode } from '../hooks/useFolderSortMode'
 import type { CronPrefill } from '../utils/schedulePresets'
 import { SaveCreateLabel, expandDow } from '../utils/cronUtils'
@@ -126,7 +127,11 @@ function parseJobDefaults(job?: CronJob) {
     !seg.split('-').some(tok => /^\d+$/.test(tok) && parseInt(tok, 10) > 7) && expandDow(seg).length > 0)
   const isWeekly = !isInterval && cronParts.length === 5 && cronParts[4] !== '*' && cronParts[2] === '*' && cronParts[3] === '*'
     && isPlainField(cronParts[0], 59) && isPlainField(cronParts[1], 23) && isRepresentableDow(cronParts[4])
-  const schedMode = isInterval ? 'interval' as const : isWeekly ? 'weekly' as const : 'cron' as const
+  // A one-shot job carries neither a cron expression nor an interval, and the
+  // server renders its run time as "at …". The form has no editor for that time,
+  // so it shows the stored text and leaves the schedule out of the save (#25898).
+  const isOneShot = !isInterval && !cronRaw && /^at\s/.test(job.schedule || '')
+  const schedMode = isOneShot ? 'once' as const : isInterval ? 'interval' as const : isWeekly ? 'weekly' as const : 'cron' as const
   // Read cron time and days directly (stored in job timezone, not UTC)
   let weekDays: number[] = []
   let weekTime = '09:00'
@@ -192,7 +197,9 @@ function buildBody(
   // that unchecking restores what was there, and a reader who checks the box,
   // saves, and unchecks it later would instead find the folder silently gone.
   body.chat_folder_id = isLlmless ? '' : f.chatFolderId
-  if (f.schedMode === 'interval') {
+  if (f.schedMode === 'once') {
+    // The PATCH keeps the stored run time and timezone when none is sent.
+  } else if (f.schedMode === 'interval') {
     body.every = f.intVal * (f.intUnit === 'minutes' ? 60 : f.intUnit === 'hours' ? 3600 : 86400)
   } else if (f.schedMode === 'weekly') {
     if (f.weekDays.length === 0) { setError(i18nT('components.jobForm.select_at_least_one_day')); return null }
@@ -505,12 +512,19 @@ export default function JobForm({ job, prefill, agents, defaultAgent, rosterFail
    *  move-to-folder submenu and the launcher's folder rows, so this picker lists
    *  folders in the order and with the ancestry labels the reader already knows --
    *  and a fix to either (a cycle guard, a non-string name off disk) reaches all
-   *  of them at once. */
+   *  of them at once.
+   *
+   *  A mate's home and the folders inside it are left out: they hold only that
+   *  mate's sessions, so the save would be refused. The job's own saved folder
+   *  stays listed, so an existing value is still shown as it is. */
   const { mode: folderSortMode, error: folderSortError } = useFolderSortMode()
+  const savedChatFolderId = job?.chat_folder_id || ''
   const folderOptions = useMemo(() => {
-    const ordered = orderFoldersWithPaths(chatFolders, folderSortMode)
+    const ordered = orderFoldersWithPaths(chatFolders, folderSortMode).filter(
+      f => f.folder.id === savedChatFolderId || !isMateManaged(f.folder, chatFolders),
+    )
     return { values: ordered.map(f => f.folder.id), labels: ordered.map(f => f.path) }
-  }, [chatFolders, folderSortMode])
+  }, [chatFolders, folderSortMode, savedChatFolderId])
   /** `hide_in_chat` is the explicit "this job gets no tab" opt-out, and a run with
    *  no tab has nothing to file -- so with it on the picker cannot do anything.
    *  Saying that and refusing input beats accepting a setting whose only
@@ -810,6 +824,9 @@ export default function JobForm({ job, prefill, agents, defaultAgent, rosterFail
       {/* Schedule */}
       {vertical && <div className="flex flex-col gap-0.5"><span className="text-[12px] text-muted font-medium">{i18nT('components.jobForm.schedule')}</span><span className="text-[11px] text-muted/70">{i18nT('components.jobForm.how_often_this_job_runs')}</span></div>}
       <div className={`flex gap-2 items-center flex-wrap ${vertical ? '' : ''}`}>
+        {schedMode === 'once' ? (
+          <span className="text-[13px] text-text" data-testid="jobform-one-shot-schedule">{job?.schedule}</span>
+        ) : (<>
         <SimpleSelect
           options={['interval', 'weekly', 'cron']}
           optionLabels={[i18nT('components.jobForm.every_interval'), i18nT('components.jobForm.weekly_schedule'), i18nT('components.jobForm.cron_expression')]}
@@ -837,6 +854,7 @@ export default function JobForm({ job, prefill, agents, defaultAgent, rosterFail
         </>) : (<>
           <Input value={cronExpr} onChange={e => setCronExpr(e.target.value)} placeholder="0 9 * * 1-5" />
           {tzSelect}
+        </>)}
         </>)}
         {!vertical && !externalSubmit && <SendBtn onClick={submit} disabled={saving}>{saving ? i18nT('components.jobForm.saving') : (job ? i18nT('components.jobForm.save') : i18nT('components.jobForm.add'))}</SendBtn>}
       </div>

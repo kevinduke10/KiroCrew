@@ -105,6 +105,17 @@ def _created_slot_row(state: Any, request: web.Request, slot: Any) -> dict[str, 
     return row
 
 
+def _mate_home_locked_response() -> web.Response:
+    """The 403 for a create that would file a chat into, or out of, a mate's home."""
+    return web.json_response(
+        {
+            "error": "this folder belongs to a mate and is managed for you",
+            "code": "mate_home_locked",
+        },
+        status=403,
+    )
+
+
 def _retract_failed_newborn(state: DashboardState, slot: _ChatSlot) -> bool:
     """Withdraw a slot this create minted and is answering with a failure.
 
@@ -210,6 +221,9 @@ async def api_chat_slot_create(request: web.Request) -> web.Response:
     # Refused before anything is read or written, so a stale client cannot stamp
     # a remote executor onto a new local slot. The answer is the same for every
     # caller and every state, so it discloses nothing.
+    from kiro_crew.shared_crew import admission_gate
+
+    _service = await admission_gate.current_service()
     if body.get("instance_id") or body.get("adopt_remote_slot"):
         return web.json_response(
             {
@@ -280,6 +294,11 @@ async def api_chat_slot_create(request: web.Request) -> web.Response:
     # or two and it then jumps into the folder. Validated exactly as
     # PATCH /api/chat/slots/{slot}/folder validates it.
     folder_id = str(body.get("folder_id") or "")
+    from kiro_crew.dashboard.mate_folders import home_owner_of, refuses_refile
+
+    if home_owner_of(state._folders, folder_id):
+        # A mate's home folder holds only the chats that mate opens.
+        return _mate_home_locked_response()
     if folder_id and not any(f["id"] == folder_id for f in state._folders):
         return web.json_response(
             {"error": "folder not found", "code": "folder_not_found"}, status=400
@@ -590,7 +609,7 @@ async def api_chat_slot_create(request: web.Request) -> web.Response:
             )
             if denied is not None:
                 return denied
-            is_new_slot = _requested_key not in state._slots
+        is_new_slot = not _requested_key or _requested_key not in state._slots
         # The binding is stamped only on the owner's own fresh local create below;
         # any request that would skip that branch is refused, never left unbound.
         if app_agent_owner and not (
@@ -600,6 +619,11 @@ async def api_chat_slot_create(request: web.Request) -> web.Response:
                 {"error": "invalid app agent owner", "code": "invalid_app_agent_owner"},
                 status=400,
             )
+        # Charge only a new allocation, with no await between the check and mint.
+        if is_new_slot:
+            _rate = _service.check_session_create(admission_gate.actor_budget(request))
+            if _rate is not None:
+                return _rate.refusal_response()
         try:
             slot = state.get_or_create_slot(
                 name,
@@ -674,6 +698,23 @@ async def api_chat_slot_create(request: web.Request) -> web.Response:
             # Same attribution as the send auto-create: a cron-opened slot
             # carries its creator and never reads as a person's own tab.
             slot._created_by = cron_creator
+        if is_new_slot:
+            # Shared Crew creator: the actor the auth middleware published,
+            # write-once. Function-local: this module runs on the facade globals.
+            from kiro_crew.shared_crew.attribution import stamp_creator
+            from kiro_crew.shared_crew.audit import schedule_action_audit
+            from kiro_crew.shared_crew.contracts import ActionOutcome, ActionType
+            from kiro_crew.shared_crew.identity import actor_of
+
+            _sc_actor = actor_of(request)
+            stamp_creator(slot, _sc_actor)
+            schedule_action_audit(
+                ActionType.SESSION_CREATE,
+                session_key=slot.key,
+                initiator=_sc_actor,
+                outcome=ActionOutcome.APPLIED,
+                target=slot.key,
+            )
         if is_new_slot and cfg is not None:
             if is_owner_dashboard_request(request):
                 # Take the slot lock before the newborn's first await: a later
@@ -702,6 +743,13 @@ async def api_chat_slot_create(request: web.Request) -> web.Response:
             if is_new_slot:
                 _retract_failed_newborn(state, slot)
             return denied
+        # `name` can address a slot already filed in a mate's home; moving it to
+        # another folder from here would take it out of that home. Checked on
+        # the slot get_or_create_slot returned, before anything below writes it.
+        if folder_id and refuses_refile(state._folders, slot.folder_id, folder_id, ""):
+            if is_new_slot:
+                _retract_failed_newborn(state, slot)
+            return _mate_home_locked_response()
         # Pin title if explicitly provided (prevents auto-title from overwriting).
         # A cron caller uses this route as both create and reopen. Its title names
         # the new session, but a later reopen must not undo a user's rename.

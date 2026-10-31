@@ -23,6 +23,10 @@ BENIGN_PACKAGE_SPAWNS: frozenset[str] = frozenset(
         # Embedding child: this interpreter, -P, a fixed module; requests travel
         # on its pipes as data, never as argv. No agent input reaches the spawn.
         "embeddings_child.py::spawn",
+        # Page-cache read-ahead child: this interpreter, -I -c with a fixed program;
+        # argv is a chunk size and the gateway's own database paths. stdio DEVNULL,
+        # no shell or cwd. A child so closing its descriptors keeps our SQLite locks.
+        "page_cache.py::_read_through",
         # Gateway transport: argv from the resolved CLI, saved deployment and
         # validated workspace; the shell text is a quoted GUEST command and payloads
         # ride stdin. Host credential isolation would prevent coder login.
@@ -599,10 +603,23 @@ BENIGN_PACKAGE_SPAWNS: frozenset[str] = frozenset(
         # a probe there would be the one reader the floor cannot fence. Those rows
         # print their declared remedy unprobed instead (``_doctor_agent_auth``).
         "cli_doctor_parts/host_probes.py::_kiro_cli_signed_in",
+        # ``kiro-cli-chat --version``: fixed argv with nothing interpolated, a 5 s
+        # timeout, read-only. The binary is the one the resolved kiro-cli launcher
+        # itself execs for every session (``~/.local/bin``, then ``PATH``, or the
+        # sibling in a macOS ``.app`` bundle), or the launcher's sibling that a
+        # vault-signed relay KAS spawn execs, so probing it runs nothing a
+        # session start would not already run; no agent-influenced component.
+        "doctor_checks/services.py::_probe_chat_binary",
         # ``systemctl is-active <unit>`` probes for the memory-pressure
         # preparedness check: argv is hardcoded (systemd-oomd/earlyoom unit
         # names), no agent influence, 5s-capped, read-only query.
         "cli_doctor_parts/host_probes.py::_detect_userspace_oom_killer",
+        # ``systemd-tmpfiles --cat-config`` probe for the Temp directories row:
+        # fixed argv (the binary resolved through ``trusted_system_bin`` against
+        # the fixed system dirs, the subcommand a literal), no agent influence,
+        # 5s-capped, read-only query. Reads only stdout (the ageing config) to
+        # decide whether a tmpfiles rule ages the temp dir.
+        "doctor_checks/resources.py::_tmpfiles_ages",
         "cli_server.py::_logs_cmd",
         "cli_server_restart.py::_spawn_detached_gateway",
         "cli_server_update.py::_update",
@@ -1016,6 +1033,15 @@ BENIGN_PACKAGE_SPAWNS: frozenset[str] = frozenset(
         # would be circular: it constructs the cgroup boundary agent spawns
         # are confined by.
         "sandbox_slice.py::ensure_agents_slice_limits",
+        # Shared Crew per-principal slices: `systemctl --user set-property
+        # --runtime <slice> CPUQuota=<N>% MemoryMax=<N>M MemorySwapMax=0
+        # TasksMax=<N>`, `start|stop <slice>` and `is-active <unit>`. The binary
+        # is resolved from trusted system directories, the unit name is minted
+        # by shared_crew.containment (sha256 hex of a principal id) and checked
+        # against a unit-name pattern, and every number comes from the bounded
+        # dashboard.shared_crew config -- nothing is agent-influenced. Like the
+        # aggregate ceiling above, it builds the boundary agents are confined by.
+        "shared_crew/containment.py::_run",
         # The agent-slice MemoryHigh reconciler. Fixed argv: `systemctl --user
         # set-property --runtime kirocrew-agents.slice MemoryHigh=<value>`, where
         # the binary is resolved with shutil.which (never a caller-supplied PATH)

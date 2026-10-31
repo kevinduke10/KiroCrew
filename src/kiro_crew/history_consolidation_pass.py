@@ -46,8 +46,10 @@ from typing import TYPE_CHECKING, Any
 from kiro_crew.executors import run_in_embed_pool  # noqa: F401 - facade re-export
 from kiro_crew.history_consolidation_memory import (
     _SEMANTIC_OMISSION_NOTICE,
+    _audit_oversized_semantic,
     _bounded_semantic_table,
     _is_plausible_memory_file,
+    _refuse_oversized_semantic,
     _reroute_lesson_semantic_keys,
     _semantic_snapshot_in_pages,
     _session_facets,
@@ -79,6 +81,7 @@ from kiro_crew.history_projection import DISPLAY_ONLY_ROLES
 from kiro_crew.lesson_validation import LESSON_APPLIES_INSTRUCTION
 from kiro_crew.llm_helpers import ToolApprovalPolicy, background_turn
 from kiro_crew.vector_memory_constants import (
+    _MAX_CONSOLIDATION_SEMANTIC_VALUE_CHARS,
     _MAX_EPISODIC_PER_CONSOLIDATION,
     _MAX_LESSONS_PER_CONSOLIDATION,
     _MAX_SEMANTIC_PER_CONSOLIDATION,
@@ -113,6 +116,7 @@ async def _consolidate(
     """
     # Every store pass below runs on the background memory pool (mc-membg), so a
     # backlog of consolidations never holds an mc-embed worker a turn needs.
+    from kiro_crew.consolidation_gate import consolidation_pass_gate as _consolidation_pass_gate
     from kiro_crew.executors import run_in_memory_background_pool as _run_in_memory_background_pool
 
     # Capture the gateway loop so the thread-offloaded _process_auto_skills
@@ -129,6 +133,7 @@ async def _consolidate(
     lease: str | None = None
     lease_heartbeat: asyncio.Future | None = None
     lease_lost = False
+    gate: asyncio.Semaphore | None = None
     owner = asyncio.current_task()
 
     def _abort_lost_lease() -> None:
@@ -179,6 +184,12 @@ async def _consolidate(
         metadata = await asyncio.to_thread(self._log.get_metadata, key)
         if isinstance(metadata, dict) and is_incognito_transcript(metadata.get("memory_mode")):
             return _CONSOLIDATION_REFUSED
+        # One pass at a time in this process. Queued before the lease, so a
+        # waiting pass holds no cross-process claim and its key stays in
+        # _running, which keeps duplicate triggers for it a no-op.
+        waiting = _consolidation_pass_gate()
+        await waiting.acquire()
+        gate = waiting
         # Acquire before reading the authoritative span: a peer may have
         # completed it since scheduling, and busy callers need no snapshot.
         acquisition = asyncio.create_task(asyncio.to_thread(self._acquire_consolidation_lease, key))
@@ -717,6 +728,9 @@ async def _consolidate(
                 "(e.g. pref.color, user.favorite_language, project.name). "
                 "confidence 1.0 = user stated, 0.8-0.9 = clearly implied, <0.8 = uncertain (rejected). "
                 "value must be a JSON primitive (string, number, boolean) — NOT objects or arrays. "
+                f"Each value is at most {_MAX_CONSOLIDATION_SEMANTIC_VALUE_CHARS} characters: "
+                "a longer one is refused whole, never shortened, so split a long fact into "
+                "separate keys yourself, one fact per key. "
                 "IMPORTANT: Check existing semantic memory above. If a key already covers "
                 "the same topic, UPDATE that key instead of creating a new one. "
                 "Do NOT create near-duplicate keys (e.g. project.x.approach AND project.x.refined). "
@@ -933,6 +947,16 @@ async def _consolidate(
 
             kind_routing = route_consolidation_by_kind(consolidation, self._logger)
             consolidation = kind_routing.result
+            # The consolidation size bound, on the answer routing returned, as the V1
+            # writer applies it: routing reads and logs every item as it would without
+            # the bound (_refuse_oversized_semantic).
+            consolidation, oversized = _refuse_oversized_semantic(
+                consolidation,
+                self._logger,
+                vector_store=store,
+                source=f"consolidation:{key}",
+                member=True,
+            )
             # memory.lesson_extraction_enabled covers the member store too:
             # its extracted lessons are dropped from the payload, and every
             # other update still applies.
@@ -967,6 +991,9 @@ async def _consolidate(
 
             def _apply_member_consolidation() -> dict:
                 with self._publication_hold_checked(key, commit_state) as publication:
+                    # One memory_events row per refused value, under this hold and
+                    # before apply_consolidation opens its transaction.
+                    _audit_oversized_semantic(store, oversized, key)
                     applied = store.apply_consolidation(
                         source_id=source_id,
                         session_key=key,
@@ -1261,6 +1288,10 @@ async def _consolidate(
         raise
     finally:
         self._running.discard(key)
+        # First, so a cancellation landing in the awaits below cannot strand
+        # the gate and stop every later pass in this process.
+        if gate is not None:
+            gate.release()
         if lease_heartbeat is not None:
             # The heartbeat stops before the release, so a renewal cannot
             # land after the lease is cleared and race a peer's fresh

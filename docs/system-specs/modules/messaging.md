@@ -939,9 +939,10 @@ tool.
 
 **The emoji sink is injected, never imported.** The single channel operation the
 ladder needs is "add or remove ONE emoji on ONE message", and it arrives as a
-`ReactionSink` bound to one message (`CallableReactionSink` wraps two coroutine
-functions, so a channel binds its client, channel and message into closures at the
-call site rather than writing a sink class). That is what keeps the pinned one-way
+`ReactionSink` bound to one message. The channel supplies it as its own small
+class that holds its client, channel and message and satisfies the protocol's
+`add` / `remove` (Discord's is `_MessageReactionSink` in
+`discord/renderer_status.py`). That is what keeps the pinned one-way
 dependency direction intact: `kiro_crew.messaging` imports nothing from
 `kiro_crew.slack` / `kiro_crew.discord` / `kiro_crew.dashboard`, and a ladder that
 reached for a channel's REST client would reintroduce exactly the cycle this
@@ -4425,7 +4426,7 @@ for a request id. A button rendered before the nonce existed has no nonce segmen
 the right-to-left parse leaves part of the id where the nonce belongs and the compare
 fails closed, which is the correct answer for a press from an earlier process. Same
 mechanism as Discord's (see above); Slack carries the same per-prompt nonce in each
-button value (`slack/renderer.build_approval_token`).
+button value (`slack/approval_tokens.build_approval_token`, re-exported by `slack/renderer`).
 
 ### Telegram's durable `getUpdates` cursor
 

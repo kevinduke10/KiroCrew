@@ -319,6 +319,13 @@ set.
 surface without the wrapper keeps each message's own set. A preview that fails
 to load becomes an inline `ErrorNotice` and is no longer a control.
 
+Every Save on a `FileCard` links to `/api/outbox/<filename>?download=1`, which
+the gateway answers with `Content-Disposition: attachment`. The `download`
+attribute alone is not enough: a browser that ignores it follows the header,
+and the outbox serves a PDF `inline`, so Save would open a viewer instead of
+saving. Players and previews keep the plain URL. A non-media file, a PDF
+included, keeps the whole card as its Save link.
+
 ## Host-mediated chat launch and cron toggles
 
 `useChatLauncher().openChat` accepts `slotKey` and `autoSend`. Without a target,
@@ -1232,7 +1239,8 @@ first; `_alias_selected` in `skill_runtime/catalog.py` still selects a row liste
 under its flat link when the namespaced link one level under the mapping's literal
 prefix resolves to the same target. The exact read served while the catalog is
 `building` (`skill_runtime/search.py`) and the dashboard's "used by" annotation
-(`_shared_skill_listing.py`) apply the same rule through `_alias_matches`, for a
+(`_shared_skill_listing.py`) and a crewmate's comes-with and added skill bands
+(`mate_capabilities.worker_summary`) apply the same rule through `_alias_matches`, for a
 path inside the skills roots only. Each link is a
 symlink on POSIX and a **directory junction** on Windows, via
 `platform_compat.symlink_or_junction`.
@@ -2584,6 +2592,17 @@ dashboard subject that is not the owner, and any app token, gets 403 `owner_only
 — including an app token on its own `/api/apps/<self>/update`, which its implicit
 self-ownership would otherwise reach. `test_apps_install_owner_gate.py` pins the
 app-token refusals.
+
+**A body that is not a JSON object is a 400.** Those five, plus
+`POST /api/apps/register` and `POST /api/apps/<name>/dev`, parse with
+`await request.json()` and then read fields with `body.get()`, so each returns
+`body_not_object_error(body)` (`dashboard/handlers/_shared.py`) right after the
+parse: a list, string, number or `null` body is answered
+`400 body_not_object` instead of raising `AttributeError` as a 500, and
+`PUT /api/apps/registries` audits it as a denial like its other refusals.
+`POST /api/apps/<name>/uninstall` is not one of them: its parse keeps the safe
+defaults for any body, so data is kept. `test_apps_routes_non_object_body.py` pins
+each route.
 
 **Implicit self-ownership stops at the shared literal routes.** Beyond the
 declared `permissions.api` allowlist, `_app_owns_path` grants an app token
@@ -4367,7 +4386,9 @@ the issue time. The wire format and the verifier's steps are in
 4. `none` for every other request.
 
 The proxy strips any caller-sent `X-KiroCrew-Proxy` and `X-KiroCrew-Principal`
-for every app, opted in or not, so a backend sees only the gateway's values. An
+for every app, opted in or not, so a backend sees only the gateway's values. It
+also drops every relay identity header (`x-kiro-relay-*`, matched by prefix in any
+case), so no backend receives one. An
 app that does not opt in receives no principal header. A
 signer refusal returns 502 `proxy_principal_sign_failed` rather than forwarding
 an opted-in request without its claim.
