@@ -9,6 +9,15 @@ Bedrock identifier grammar in `validation_parts/input_bounds.py`. AWS credential
 are not config fields: the native runtime uses boto3's credential and Region
 resolution, subject to the existing child environment and sandbox policy.
 
+The fork defaults both `agent.acp_backend` and `agent.member_acp_backend` to
+`bedrock`. Absent or empty fields follow these defaults. Invalid, denied or
+unavailable selections raise `Cannot reach AI` instead of selecting a CLI floor.
+Malformed values in either field are preserved as refusal markers through schema
+validation. Existing explicit legacy selections remain explicit; upgrading source
+does not migrate a running installed desktop application or its configuration.
+Keep `agent.model = "auto"` until setup; the first native prompt then returns a
+setup error without constructing an AWS client. Local mate records need no AWS.
+
 ## Overview
 
 The config package loads runtime configuration from `~/.kiro/crew/config.json`

@@ -513,3 +513,26 @@ class TestImportedCrewmateCreate:
         assert status == 400
         assert data["code"] == "invalid_imported"
         assert cfg.saved == [] and cfg.agents == {}
+
+
+@pytest.mark.asyncio
+async def test_native_mate_creation_needs_neither_model_setup_nor_cli(monkeypatch):
+    from kiro_crew import kiro_cli
+    from kiro_crew.config.sections_agent import AgentConfig
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Local mate creation must not resolve a CLI or create an AWS client")
+
+    monkeypatch.setattr(kiro_cli, "pin_kiro_cli", forbidden)
+    monkeypatch.setattr("boto3.client", forbidden)
+    cfg = _fake_config()
+    cfg.agent = AgentConfig()
+    assert cfg.agent.model == "auto"
+    status, data = await _post(
+        {"name": "local-mate", "kiro_agent": "kirocrew", "workspace": "research"},
+        cfg,
+        installed=("kirocrew",),
+    )
+    assert status == 200
+    assert data["ok"] is True
+    assert "local-mate" in cfg.written["doc"]["agents"]

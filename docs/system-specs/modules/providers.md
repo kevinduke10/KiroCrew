@@ -21,6 +21,14 @@ provider remains ACP, retaining the existing sandbox, session and permission
 seams. Install the `bedrock` extra of the `custom/` package and configure a concrete `agent.model` ID or
 inference profile. There is no implicit model substitution or catalog probe.
 
+Native Bedrock is this fork's default for both ordinary and member sessions.
+An unavailable backend selection raises rather than starting another harness.
+Missing model setup returns `Cannot reach AI: Bedrock is not configured` with
+configuration guidance. SDK initialization and inference failures return a
+sanitized `Cannot reach AI` message; raw SDK exceptions are not shown. No alternate
+CLI or model is started as recovery. Initialization and session creation remain
+local and do not require AWS credentials.
+
 The runtime supports text conversations and MCP tool use for Converse-compatible
 models. Tools require a model that supports Converse tool calling. Images,
 embeddings and models that require another Bedrock API are outside this runtime.

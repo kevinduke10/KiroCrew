@@ -31,6 +31,7 @@ from kiro_crew.acp import client as acp_client
 from kiro_crew.acp import runtime as acp_runtime
 from kiro_crew.acp.harness import KasHarness, KiroHarness
 from kiro_crew.acp.types import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_COPILOT,
@@ -110,13 +111,13 @@ def _field_enum(name: str) -> object:
 
 
 # ---------------------------------------------------------------------------
-# Group A: KAS is the default; Kiro is the floor
+# Group A: native default and explicit selection failures
 # ---------------------------------------------------------------------------
 
 
-def test_kas_is_the_default_backend() -> None:
-    """H1: configuring nothing yields the KAS harness."""
-    assert _field_default("acp_backend") == ACP_BACKEND_KAS
+def test_bedrock_is_the_default_backend() -> None:
+    """H1: configuring nothing yields the native Bedrock harness."""
+    assert _field_default("acp_backend") == ACP_BACKEND_BEDROCK
 
 
 def test_kiro_is_always_selectable() -> None:
@@ -145,19 +146,14 @@ def test_provider_enum_is_acp_only() -> None:
 
 
 @pytest.mark.parametrize("persisted", ["", "kas", "byo-harness", "claude", None, 7])
-def test_unselectable_backend_degrades_to_default(persisted: object) -> None:
-    """H3: an unusable persisted value degrades safely and never raises.
-
-    Only an absent value (``None``) earns the KAS default. A malformed, denied
-    or host-unservable explicit value takes the unconditional Kiro floor, so the
-    resolved value always belongs to the live selectable set.
-    """
-    resolved = _normalize_acp_backend(persisted)
-    assert resolved in selectable_backends()
-    if persisted is None:
-        assert resolved == ACP_BACKEND_KAS
-    elif persisted not in selectable_backends():
-        assert resolved == ACP_BACKEND_KIRO
+def test_backend_selection_preserves_choices_or_raises(persisted: object) -> None:
+    """H3: an unavailable choice never starts another harness."""
+    if persisted is not None and persisted not in selectable_backends():
+        with pytest.raises(ValueError, match="Cannot reach AI"):
+            _normalize_acp_backend(persisted)
+    else:
+        expected = ACP_BACKEND_BEDROCK if persisted is None else persisted
+        assert _normalize_acp_backend(persisted) == expected
 
 
 def test_registering_a_backend_makes_it_survive_load() -> None:
@@ -183,7 +179,8 @@ def test_registering_a_backend_makes_it_survive_load() -> None:
     try:
         acp_backends._baseline.discard(ACP_BACKEND_CLAUDE)
         acp_backends._selectable.discard(ACP_BACKEND_CLAUDE)
-        assert _normalize_acp_backend(ACP_BACKEND_CLAUDE) == ACP_BACKEND_KIRO
+        with pytest.raises(ValueError, match="Cannot reach AI"):
+            _normalize_acp_backend(ACP_BACKEND_CLAUDE)
 
         acp_backends.register_selectable_backend(ACP_BACKEND_CLAUDE)
         assert _normalize_acp_backend(ACP_BACKEND_CLAUDE) == ACP_BACKEND_CLAUDE
@@ -220,25 +217,17 @@ def test_config_load_never_reads_the_platform_context(monkeypatch) -> None:
     monkeypatch.setattr(pc, "installed_context", lambda: reached.append("installed_context"))
 
     for value in ("", "kas", "byo-harness", "claude", None, 7):
-        assert _normalize_acp_backend(value) in ACP_BACKENDS_KNOWN
+        if value is not None and value not in selectable_backends():
+            with pytest.raises(ValueError, match="Cannot reach AI"):
+                _normalize_acp_backend(value)
+        else:
+            assert _normalize_acp_backend(value) in ACP_BACKENDS_KNOWN
 
     assert reached == [], f"config normalization reached the platform context: {reached}"
 
 
-def test_selectability_has_one_logged_gate() -> None:
-    """H4: ``resolve_selected_backend`` is the ONLY gate, and it logs.
-
-    This replaces the previous two-mechanism guarantee, deliberately. The old
-    contract kept a static ``enum`` on the field as a second, SILENT gate:
-    ``validate_config_data`` deletes an out-of-enum value before the loader sees
-    it, and the degrade log only fires on a non-empty value, so a backend an
-    edition had legitimately registered was stripped from config.json with no log
-    line at all — the exact failure the old H4 text described as a hazard and did
-    not prevent. Removing the enum makes the logged degrade the single gate.
-
-    Pinned here rather than left to prose because re-adding ``enum=`` would look
-    like a harmless tidy-up and would silently restore the strip.
-    """
+def test_selectability_has_one_gate() -> None:
+    """H4: dynamic selectability has one gate; schema cannot discard a choice."""
     assert _field_enum("acp_backend") is None, (
         "acp_backend must NOT declare a static enum: it is frozen at import, "
         "before an edition registers its backends, and validate_config_data "
@@ -289,6 +278,7 @@ def test_member_capabilities_are_opt_in() -> None:
             ACP_BACKEND_CODEX,
             ACP_BACKEND_DEEPSEEK,
             ACP_BACKEND_PI,
+            ACP_BACKEND_BEDROCK,
         }
     )
     assert ACP_BACKENDS_MEMBER_CAPABILITIES is not ACP_BACKENDS_SESSION_SHARING
@@ -315,7 +305,9 @@ def test_the_mate_worker_takes_the_member_rule() -> None:
     for provider in (providers_acp.AcpProvider, AcpSessionProvider):
         source = inspect.getsource(provider.mate_worker_kit_supported.fget)
         assert "in ACP_BACKENDS_MATE_WORKER_KIT" in source
-    assert ACP_BACKENDS_MATE_WORKER_KIT == frozenset({ACP_BACKEND_KAS, ACP_BACKEND_CLAUDE})
+    assert ACP_BACKENDS_MATE_WORKER_KIT == frozenset(
+        {ACP_BACKEND_KAS, ACP_BACKEND_CLAUDE, ACP_BACKEND_BEDROCK}
+    )
     assert ACP_BACKENDS_MATE_WORKER_KIT <= ACP_BACKENDS_MEMBER_CAPABILITIES
     assert ACP_BACKEND_KIRO not in ACP_BACKENDS_MATE_WORKER_KIT
     # The worker's prompt rides the context block exactly where the host's mirror

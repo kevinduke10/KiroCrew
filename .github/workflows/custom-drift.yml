@@ -1,0 +1,46 @@
+name: Custom AWS drift
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 10 * * 1-5'
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: custom-aws-deployment
+  cancel-in-progress: false
+jobs:
+  drift:
+    if: github.ref == 'refs/heads/main' && vars.CUSTOM_DEPLOYMENT_ENABLED == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, test, prod]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: ${{ matrix.environment }}-plan
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: '1.14.0'
+          terraform_wrapper: false
+      - name: Install deployment tooling
+        run: python -m pip install boto3==1.40.66 PyYAML==6.0.3
+      - name: Validate account configuration
+        id: config
+        env:
+          TARGET_ENV: ${{ matrix.environment }}
+        run: python -m custom.scripts.deployment config --environment "$TARGET_ENV"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ steps.config.outputs.plan_role }}
+          aws-region: ${{ steps.config.outputs.region }}
+          allowed-account-ids: ${{ steps.config.outputs.account_id }}
+      - name: Detect Terraform and nested CloudFormation drift without applying
+        env:
+          TARGET_ENV: ${{ matrix.environment }}
+        run: python -m custom.scripts.deployment drift --environment "$TARGET_ENV"

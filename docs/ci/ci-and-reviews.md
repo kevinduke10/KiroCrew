@@ -47,14 +47,39 @@ rerun.
 
 The **Custom Layer** workflow (`.github/workflows/spec-tracker.yml`) runs the
 [repo-local custom checks](../../custom/README.md). It installs the core and
-custom package together and explicitly collects `custom/tests/` with the root
+custom package (including Bedrock and SaaS extras) together and explicitly collects `custom/tests/` with the root
 pytest configuration so the repository's host-isolation fixtures apply.
 
 - **Trigger:** Pull requests touching `custom/`, its workflow, core Python sources,
   dependency manifests or agent instructions; also manual dispatch.
 - **Outcome:** PASS when the tracker, checkpoint history and custom/core integration
-  tests pass. BLOCK on malformed records, rewritten history or compatibility failures.
+  tests and browser PKCE checks pass. BLOCK on malformed records, rewritten history
+  or compatibility failures.
   Local checks do not claim a live AWS request or remote CI execution.
+
+## Custom AWS deployment workflows
+
+The [custom deployment implementation](../../custom/README.md#dev-test-and-prod-accounts)
+uses a shared Terraform module and the custom SAM stack, with separate Dev/Test/Prod
+accounts and protected GitHub environments.
+
+- **Trigger:** `custom-infrastructure.yml` validates infrastructure/tooling changes
+  on pull requests or manual dispatch, without AWS credentials.
+- **Outcome:** PASS when formatting, provider schemas, Terraform mock plans, SAM,
+  deployment tests and workflow syntax pass; BLOCK on a failed check.
+- **Trigger:** `custom-deploy.yml` runs only by manual dispatch from `main` and calls
+  `custom-deploy-environment.yml` in Dev → Test → Prod order. It validates configured
+  account IDs and environment protection rules before requesting credentials.
+- **Outcome:** PASS when the same release passes each environment's saved-plan
+  apply and public endpoint probes. BLOCK on missing configuration/protection,
+  wrong account, release/plan integrity failure, expired/stale plan, apply or probe
+  failure. Prod uses its required-reviewer environment gate. Live authenticated
+  isolation and RAG tests remain part of deployment readiness, not implied by probes.
+- **Trigger:** `custom-drift.yml` runs manually or on its weekday schedule when
+  `CUSTOM_DEPLOYMENT_ENABLED=true`; it shares deployment concurrency control.
+- **Outcome:** PASS when Terraform and supported CloudFormation drift checks are
+  clean; BLOCK on drift or inability to check. It does not apply repairs.
+
 
 ## Shape
 

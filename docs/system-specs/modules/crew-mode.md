@@ -20,6 +20,16 @@ verbs in [session-control](session-control.md)). It shares nothing with the
 retired slot mode: no `"crew"` mode value, no `crew_chat.py`, no queue or topic
 store.
 
+## Native Bedrock members in this fork
+
+Fresh ordinary and member sessions use native Bedrock. A local mate record can be
+created without a configured model or AWS credentials. Chat requires setup and
+returns an explicit AI error if unavailable; selection never falls back to CLI.
+Saved-spec MCP projections, per-session dispatch and worker kits use the existing
+member seams. Worker prompts ride the context block. Bedrock does not advertise
+single-tool worker/member limit fidelity: existing guards refuse unsupported
+worker limits, and the mirror withholds an entire restricted MCP server.
+
 ## Crew Mode
 
 Crew Mode is a chat that runs a conductor and the sessions that conductor dispatches.

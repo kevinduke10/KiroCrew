@@ -98,7 +98,7 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger("kiro_crew.config.loader")
 
 #: What a present non-string ``agent.acp_backend`` is replaced with in the loaded
-#: data: the Kiro CLI floor for an unusable value, kept apart from a stored Kiro
+#: data: a refusal marker for an unusable value, kept apart from a stored Kiro
 #: CLI pick (``"kiro"``). Never written to disk: full-document saves restore the
 #: harness fields from the file (``_restore_stored_harness_fields``).
 MALFORMED_BACKEND_FLOOR = "\x00malformed-acp-backend"
@@ -719,36 +719,13 @@ def validate_config_data(data: dict) -> dict:
 
             stt["threads"] = _validated_stt_threads(stt["threads"])
 
-    # 3d. The harness fields have a product default distinct from their safety
-    # floor. Absent or "" is "no choice" and takes the default, but a PRESENT
-    # malformed value must not be deleted into that same absence by jsonschema:
-    # it is an unusable explicit choice and resolves to the Kiro CLI floor,
-    # stored as ``"kiro"`` (harness-parity H3). Normalize it before type
-    # validation so jsonschema-backed loads keep that distinction. jsonschema is
-    # a pinned runtime dependency; the early no-jsonschema return is an
-    # import-failure survival path and keeps its field-default fallback.
+    # Preserve malformed explicit choices through schema validation so the loader
+    # can refuse them. Deleting a bad choice would silently select the default.
     if isinstance(agent, dict):
         for harness_key in ("acp_backend", "member_acp_backend"):
             if harness_key in agent and not isinstance(agent[harness_key], str):
-                from kiro_crew.acp_backends import (
-                    GOVERNANCE_FLOOR_BACKEND,
-                    backend_to_stored,
-                )
-
-                logger.warning(
-                    "Ignoring agent.%s %r (not a backend id); using the Kiro CLI floor",
-                    harness_key,
-                    agent[harness_key],
-                )
-                # ``agent.acp_backend`` gets a marker, not ``"kiro"``: a stored Kiro
-                # CLI pick can run on KAS (``KIRO_SELECTION_BACKEND``), and this is
-                # the floor for an unusable value, not that pick. The loader reads
-                # the marker as the floor (``_read_backend_choice``).
-                agent[harness_key] = (
-                    MALFORMED_BACKEND_FLOOR
-                    if harness_key == "acp_backend"
-                    else backend_to_stored(GOVERNANCE_FLOOR_BACKEND)
-                )
+                logger.warning("Invalid agent.%s: expected a backend id", harness_key)
+                agent[harness_key] = MALFORMED_BACKEND_FLOOR
 
     # 4. Preserve numeric values written by older config writers.
     _coerce_legacy_numeric_values(data, JSON_SCHEMA)

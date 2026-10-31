@@ -1,0 +1,76 @@
+name: Custom Dev Test Prod deployment
+on:
+  workflow_dispatch:
+    inputs:
+      rollback_run_id:
+        description: 'Optional successful deployment run ID whose exact release bytes should be restored'
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: custom-aws-deployment
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Install validation and build dependencies
+        run: python -m pip install -e '.[dev]' -e './custom[bedrock,saas]' PyYAML==6.0.3
+      - name: Check account configuration and protected environment gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
+        run: python -m custom.scripts.deployment preflight
+      - name: Run isolated custom tests
+        run: python -m pytest -c setup.cfg -n0 custom/tests
+      - name: Run browser module tests
+        run: node --test custom/tests/browser/*.test.mjs
+      - name: Build Linux Lambda package once
+        if: inputs.rollback_run_id == ''
+        run: |
+          python -m pip install --no-deps --target package ./custom
+          python -m pip install --target package 'boto3>=1.35,<2' 'PyJWT[crypto]>=2.12,<3'
+          python -m custom.scripts.deployment build
+      - name: Download previously successful immutable release
+        if: inputs.rollback_run_id != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release
+          path: release
+          run-id: ${{ inputs.rollback_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify release bytes
+        run: python -m custom.scripts.deployment verify
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+          retention-days: 90
+  dev:
+    needs: release
+    uses: ./.github/workflows/custom-deploy-environment.yml
+    with:
+      environment: dev
+  test:
+    needs: dev
+    uses: ./.github/workflows/custom-deploy-environment.yml
+    with:
+      environment: test
+  prod:
+    needs: test
+    uses: ./.github/workflows/custom-deploy-environment.yml
+    with:
+      environment: prod

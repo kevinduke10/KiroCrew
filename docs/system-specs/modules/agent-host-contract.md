@@ -1,5 +1,13 @@
 # Agent host contract
 
+This fork defaults to native Bedrock for ordinary and member sessions. Its saved
+spec and worker kit use the shared session MCP projection; worker prompt content
+rides Crew's context block. Native hooks and per-tool worker limits remain
+unsupported. The local ACP/MCP child-process capture at
+`test/fixtures/acp_frames/bedrock/native-mcp-transport-live.jsonl` records runtime
+1.0.0 permission and MCP transport with **mocked inference**, not a live AWS or
+model-behavior test. Offline projection tests provide the companion evidence.
+
 What an agent backend must supply to Kiro Crew *besides* speaking the Agent Client
 Protocol. ACP defines the wire; this document defines the **host** — the
 filesystem layout, agent-definition format, session store, credential store,

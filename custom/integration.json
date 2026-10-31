@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "upstream_remote": "upstream",
+  "reference_upstream_revision": "e1068457568b673e434f6ce7d347315597440635",
+  "core_version_range": ">=0.12,<0.13",
+  "core_patches": [
+    {
+      "path": "src/kiro_crew/acp/harness/bedrock.py",
+      "purpose": "Launch the installed custom runtime with the existing sandbox path."
+    },
+    {
+      "path": "src/kiro_crew/providers/mirrors/bedrock.py",
+      "purpose": "Lazy bridge to the custom mirror; no import-time custom dependency."
+    },
+    {
+      "path": "src/kiro_crew/providers/mirrors/registry.py",
+      "purpose": "Declare MCP projection and whole-server deny semantics."
+    },
+    {
+      "path": "src/kiro_crew/acp/harness/__init__.py",
+      "purpose": "Register the per-process launch adapter."
+    },
+    {
+      "path": "src/kiro_crew/acp/client_start.py",
+      "purpose": "Forward the projected session MCP array."
+    },
+    {
+      "path": "src/kiro_crew/acp/client_native_children.py",
+      "purpose": "Declare ACP version and initialization capabilities."
+    },
+    {
+      "path": "src/kiro_crew/acp/_dispatch_parts/tool_call_identity.py",
+      "purpose": "Interpret trusted Bedrock tool identity at the Crew gate."
+    },
+    {
+      "path": "src/kiro_crew/acp/types.py",
+      "purpose": "Persist the independent Bedrock provider label."
+    },
+    {
+      "path": "src/kiro_crew/acp_backends.py",
+      "purpose": "Compatibility re-export for the backend ID."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backends.py",
+      "purpose": "Select native Bedrock by default and raise on unavailable choices instead of selecting a CLI fallback."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backends_launch.py",
+      "purpose": "Recognize the custom process during runtime ownership checks."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backends_mcp.py",
+      "purpose": "Declare MCP-array and zero-tool-ban capabilities."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backends_models.py",
+      "purpose": "Keep model selection in an independent namespace."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backends_routing.py",
+      "purpose": "Declare every invocation routed through Crew permission checks."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backends_sessions.py",
+      "purpose": "Allow per-session process allocation without native reload."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backend_install.py",
+      "purpose": "Probe optional custom/SDK packages without AWS credential lookup."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/host_auth.py",
+      "purpose": "Describe SDK auth without adding credential-mask exemptions."
+    },
+    {
+      "path": "src/kiro_crew/validation_parts/input_bounds.py",
+      "purpose": "Accept bounded Bedrock model IDs and profile ARNs."
+    },
+    {
+      "path": "src/kiro_crew/dashboard/handlers/core_config_schema.py",
+      "purpose": "Use the same model grammar and bound in Settings."
+    },
+    {
+      "path": "src/kiro_crew/agent_sdk/backends_members.py",
+      "purpose": "Admit native saved-spec, dispatch and worker-kit projections without claiming single-tool limit fidelity."
+    },
+    {
+      "path": "src/kiro_crew/config/sections_agent.py",
+      "purpose": "Default ordinary and member sessions to native Bedrock."
+    },
+    {
+      "path": "src/kiro_crew/config/loader_builders.py",
+      "purpose": "Refuse malformed backend choices without selecting an alternate harness."
+    },
+    {
+      "path": "src/kiro_crew/config/validation.py",
+      "purpose": "Preserve malformed ordinary and member backend choices as explicit refusal markers."
+    }
+  ],
+  "validation_commands": [
+    "python3 -m pytest -c setup.cfg -n0 custom/tests",
+    "python3 custom/scripts/spec_tracker.py check --base HEAD",
+    "HARNESS_BASE_REF=upstream/main python3 scripts/check_harness_parity.py"
+  ],
+  "notes": "Core declarations and associated contract/test rows remain fork patches. Reference revision identifies the current local upstream ref; validation evidence belongs in SPEC-0003. SPEC-0013 also owns core regression updates in test/test_harness_parity.py, test/test_member_dispatch_mount.py, test/test_acp_backend_kas.py, test/test_config_load_pipeline_field_defaults.py, test/test_api_agents_create_template.py and the bedrock/native-mcp-transport-live fixture pair. Its runtime capture uses mocked inference and makes no AWS/model-access claim.",
+  "validation": {
+    "date": "2026-10-29",
+    "spec": "SPEC-0003",
+    "combined_tests_passed": 395,
+    "custom_tests_passed": 52,
+    "selections_overlap": true,
+    "wheel_smoke": "ACP initialize and session/new passed without AWS credentials or agent CLI",
+    "limitation": "Full line-cap gate flags unchanged core subagent_manager/run_turn.py at 2,030 lines; full suite and remote CI not run."
+  },
+  "tooling_patches": [
+    {
+      "path": ".github/workflows/spec-tracker.yml",
+      "purpose": "Install both custom Bedrock and SaaS extras and run offline custom tests with root host isolation."
+    },
+    {
+      "path": ".github/workflows/custom-deploy.yml",
+      "purpose": "Thin GitHub Actions entry point for custom/ Terraform validation, protected release promotion or read-only drift checks (SPEC-0012)."
+    },
+    {
+      "path": ".github/workflows/custom-deploy-environment.yml",
+      "purpose": "Thin GitHub Actions entry point for custom/ Terraform validation, protected release promotion or read-only drift checks (SPEC-0012)."
+    },
+    {
+      "path": ".github/workflows/custom-drift.yml",
+      "purpose": "Thin GitHub Actions entry point for custom/ Terraform validation, protected release promotion or read-only drift checks (SPEC-0012)."
+    },
+    {
+      "path": ".github/workflows/custom-infrastructure.yml",
+      "purpose": "Thin GitHub Actions entry point for custom/ Terraform validation, protected release promotion or read-only drift checks (SPEC-0012)."
+    }
+  ]
+}

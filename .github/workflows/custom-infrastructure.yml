@@ -1,0 +1,42 @@
+name: Custom infrastructure validation
+on:
+  pull_request:
+    paths:
+      - 'custom/deploy/**'
+      - 'custom/scripts/deployment/**'
+      - 'custom/tests/test_deployment*'
+      - '.github/workflows/custom-*.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: '1.14.0'
+          terraform_wrapper: false
+      - run: python -m pip install -e '.[dev]' -e './custom[bedrock,saas]' cfn-lint==1.59.0 PyYAML==6.0.3
+      - name: Check Terraform syntax, provider schemas and mock plans
+        run: |
+          terraform fmt -check -recursive custom/deploy/terraform
+          for target in bootstrap environments/dev environments/test environments/prod; do
+            terraform -chdir="custom/deploy/terraform/$target" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="custom/deploy/terraform/$target" validate
+          done
+          terraform -chdir=custom/deploy/terraform/bootstrap test
+          terraform -chdir=custom/deploy/terraform/environments/dev test
+      - name: Validate SAM and deployment invariants without AWS credentials
+        run: |
+          cfn-lint custom/deploy/pooled-api.yaml
+          python -m pytest -c setup.cfg -n0 custom/tests/test_deployment.py
+      - name: Validate GitHub workflow syntax
+        run: |
+          GOBIN="$RUNNER_TEMP/actionlint" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= .github/workflows/custom-deploy.yml .github/workflows/custom-deploy-environment.yml .github/workflows/custom-drift.yml .github/workflows/custom-infrastructure.yml

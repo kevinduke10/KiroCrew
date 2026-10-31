@@ -9,6 +9,15 @@
 2. Error strings at CLI boundaries (never expose tracebacks to users)
 3. Graceful degradation — partial output returned on timeout
 
+## Native Bedrock failures in this fork
+
+Backend selection fails explicitly with `Cannot reach AI` when the requested
+backend is unavailable; it never selects a different harness to recover. Native
+prompt errors distinguish missing model setup from an unreachable service with
+safe authored guidance. SDK exceptions are sanitized, so credential-bearing
+exception details do not reach the user. AWS clients are created only on prompt,
+after model validation; local mate creation needs no AWS setup.
+
 ## Sage automatic posting confirmation
 
 When automatic posting carries a driver-accepted review snapshot, the driver

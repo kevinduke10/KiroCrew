@@ -1,0 +1,686 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Pooled SaaS identity, guarded records API and separate append-only audit
+Parameters:
+  RuntimeBoundaryArn:
+    Type: String
+    Default: ''
+  ManageKnowledge:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+  EmbeddingModelArn:
+    Type: String
+    MinLength: 20
+    AllowedPattern: 'arn:aws:bedrock:[a-z0-9-]+::foundation-model/[A-Za-z0-9.:-]+'
+    Description: Explicit entitled Bedrock embedding foundation-model ARN in this Region
+  EmbeddingDimensions:
+    Type: Number
+    Default: 1024
+    MinValue: 1
+    MaxValue: 4096
+  CallbackUrl:
+    Type: String
+    AllowedPattern: 'https://[^\s#]+'
+    Description: Exact browser PKCE application callback URL
+  LogoutUrl:
+    Type: String
+    AllowedPattern: 'https://[^\s#]+'
+  WebOrigin:
+    Type: String
+    AllowedPattern: 'https://[A-Za-z0-9.-]+(:[0-9]+)?'
+    Description: Exact browser origin for CORS, without a trailing slash
+  CognitoDomainPrefix:
+    Type: String
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '[a-z0-9]+(-[a-z0-9]+)*'
+  KnowledgeBaseId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9]{10}$'
+    Description: Existing Bedrock Knowledge Base configured for the knowledge bucket
+  KnowledgeDataSourceId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9]{10}$'
+    Description: Existing S3 data source connected to the knowledge bucket
+Rules:
+  ManagedKnowledgeInputs:
+    RuleCondition: !Equals [!Ref ManageKnowledge, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref EmbeddingModelArn, '']]
+        AssertDescription: Managed knowledge requires an explicit embedding model
+      - Assert: !And
+          - !Equals [!Ref KnowledgeBaseId, '']
+          - !Equals [!Ref KnowledgeDataSourceId, '']
+        AssertDescription: Choose managed or existing knowledge resources, not both
+Conditions:
+  HasRuntimeBoundary: !Not [!Equals [!Ref RuntimeBoundaryArn, '']]
+  ManagedKnowledge: !Equals [!Ref ManageKnowledge, 'true']
+  KnowledgeConfigured: !Or
+    - !Condition ManagedKnowledge
+    - !And
+      - !Not [!Equals [!Ref KnowledgeBaseId, '']]
+      - !Not [!Equals [!Ref KnowledgeDataSourceId, '']]
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, aws.cognito.signin.user.admin]
+      CallbackURLs: [!Ref CallbackUrl]
+      LogoutURLs: [!Ref LogoutUrl]
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UserPool
+  RecordsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  ControlTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  PlatformRolesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  PooledHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref WebOrigin]
+        AllowMethods: [GET, PUT, POST, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type, If-Match, Idempotency-Key]
+        ExposeHeaders: [ETag]
+        MaxAge: 300
+      Auth:
+        DefaultAuthorizer: CognitoAccess
+        Authorizers:
+          CognitoAccess:
+            IdentitySource: '$request.header.Authorization'
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UserPool}'
+              audience: [!Ref UserPoolClient]
+            AuthorizationScopes: [aws.cognito.signin.user.admin]
+  PooledApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: ../
+      PermissionsBoundary: !If [HasRuntimeBoundary, !Ref RuntimeBoundaryArn, !Ref AWS::NoValue]
+      Handler: kirocrew_custom.saas.bootstrap.handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 256
+      Timeout: 30
+      ReservedConcurrentExecutions: 10
+      Environment:
+        Variables:
+          KNOWLEDGE_ENABLED: !If [KnowledgeConfigured, "true", "false"]
+          COGNITO_POOL_ID: !Ref UserPool
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_DOMAIN: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+          COGNITO_CALLBACK_URL: !Ref CallbackUrl
+          COGNITO_LOGOUT_URL: !Ref LogoutUrl
+          RECORDS_TABLE: !Ref RecordsTable
+          PLATFORM_ROLES_TABLE: !Ref PlatformRolesTable
+          CONTROL_TABLE: !Ref ControlTable
+          AUDIT_TABLE: !Ref AuditTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource: !GetAtt RecordsTable.Arn
+            - Effect: Allow
+              Action: [dynamodb:GetItem]
+              Resource:
+                - !GetAtt PlatformRolesTable.Arn
+                - !GetAtt ControlTable.Arn
+            - Effect: Allow
+              Action: [dynamodb:PutItem]
+              Resource: !GetAtt RecordsTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  'dynamodb:LeadingKeys': ['ORG#*']
+                'Null':
+                  'dynamodb:LeadingKeys': 'false'
+            - Effect: Allow
+              Action: [dynamodb:UpdateItem]
+              Resource: !GetAtt RecordsTable.Arn
+              Condition:
+                ForAllValues:StringEquals:
+                  'dynamodb:Attributes': [pk, sk, content, revision]
+                'Null':
+                  'dynamodb:Attributes': 'false'
+            - Effect: Allow
+              Action: [dynamodb:PutItem]
+              Resource: !GetAtt AuditTable.Arn
+      Events:
+        Browser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        AssetApp:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /app.mjs
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        AssetOauth:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /oauth.mjs
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        AssetI18N:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /i18n.mjs
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        AssetStyle:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /style.css
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        LoginConfig:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /auth/config
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        ReadResource:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}/spaces/{space}/resources/{resource}
+            Method: GET
+        EditResource:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}/spaces/{space}/resources/{resource}
+            Method: PUT
+        BrowserKnowledge:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /knowledge.mjs
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        BrowserOrganizations:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /organizations.mjs
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        CreateOrganization:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}
+            Method: PUT
+        SetOrganizationMember:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}/members
+            Method: PUT
+        OrganizationPermissions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}/permissions
+            Method: GET
+        ListAgents:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}/agents
+            Method: GET
+  ControlApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: ../
+      PermissionsBoundary: !If [HasRuntimeBoundary, !Ref RuntimeBoundaryArn, !Ref AWS::NoValue]
+      Handler: kirocrew_custom.saas.bootstrap.handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 256
+      Timeout: 30
+      ReservedConcurrentExecutions: 10
+      Environment:
+        Variables:
+          CONTROL_PLANE: "true"
+          KNOWLEDGE_ENABLED: !If [KnowledgeConfigured, "true", "false"]
+          COGNITO_POOL_ID: !Ref UserPool
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_DOMAIN: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+          COGNITO_CALLBACK_URL: !Ref CallbackUrl
+          COGNITO_LOGOUT_URL: !Ref LogoutUrl
+          RECORDS_TABLE: !Ref RecordsTable
+          PLATFORM_ROLES_TABLE: !Ref PlatformRolesTable
+          CONTROL_TABLE: !Ref ControlTable
+          AUDIT_TABLE: !Ref AuditTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem]
+              Resource:
+                - !GetAtt PlatformRolesTable.Arn
+                - !GetAtt ControlTable.Arn
+                - !GetAtt RecordsTable.Arn
+            - Effect: Allow
+              Action: [dynamodb:Query, dynamodb:PutItem, dynamodb:ConditionCheckItem]
+              Resource: !GetAtt ControlTable.Arn
+            - Effect: Allow
+              Action: [dynamodb:PutItem]
+              Resource: !GetAtt RecordsTable.Arn
+            - Effect: Allow
+              Action: [dynamodb:PutItem]
+              Resource: !GetAtt AuditTable.Arn
+            - Effect: Allow
+              Action: [cognito-idp:AdminCreateUser, cognito-idp:AdminGetUser]
+              Resource: !GetAtt UserPool.Arn
+      Events:
+        Me:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /me
+            Method: GET
+        CreateCompany:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /platform/companies
+            Method: POST
+        UpdateCompany:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}
+            Method: PUT
+        SetCompanyRole:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/members/{subject}
+            Method: PUT
+        Invite:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/invitations
+            Method: POST
+  KnowledgeDocumentsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      VersioningConfiguration: {Status: Enabled}
+  KnowledgeDocumentsPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref KnowledgeDocumentsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt KnowledgeDocumentsBucket.Arn
+              - !Sub '${KnowledgeDocumentsBucket.Arn}/*'
+            Condition:
+              Bool: {'aws:SecureTransport': 'false'}
+  KnowledgeVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    Condition: ManagedKnowledge
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketName: !Sub '${AWS::StackName}-vectors'
+  KnowledgeVectorIndex:
+    Type: AWS::S3Vectors::Index
+    Condition: ManagedKnowledge
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketArn: !Ref KnowledgeVectorBucket
+      IndexName: documents
+      DataType: float32
+      Dimension: !Ref EmbeddingDimensions
+      DistanceMetric: cosine
+      MetadataConfiguration:
+        NonFilterableMetadataKeys: [AMAZON_BEDROCK_TEXT, AMAZON_BEDROCK_METADATA]
+  KnowledgeServiceRole:
+    Type: AWS::IAM::Role
+    Condition: ManagedKnowledge
+    Properties:
+      PermissionsBoundary: !If [HasRuntimeBoundary, !Ref RuntimeBoundaryArn, !Ref AWS::NoValue]
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: bedrock.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: {'aws:SourceAccount': !Ref AWS::AccountId}
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
+      Policies:
+        - PolicyName: knowledge
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:ListBucket]
+                Resource: !GetAtt KnowledgeDocumentsBucket.Arn
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub '${KnowledgeDocumentsBucket.Arn}/knowledge/*'
+              - Effect: Allow
+                Action: [bedrock:InvokeModel]
+                Resource: !Ref EmbeddingModelArn
+              - Effect: Allow
+                Action: [s3vectors:GetIndex, s3vectors:QueryVectors, s3vectors:GetVectors, s3vectors:PutVectors, s3vectors:DeleteVectors, s3vectors:ListVectors]
+                Resource: !GetAtt KnowledgeVectorIndex.IndexArn
+  ManagedKnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    Condition: ManagedKnowledge
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub '${AWS::StackName}-knowledge'
+      RoleArn: !GetAtt KnowledgeServiceRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Ref EmbeddingModelArn
+          EmbeddingModelConfiguration:
+            BedrockEmbeddingModelConfiguration:
+              Dimensions: !Ref EmbeddingDimensions
+              EmbeddingDataType: FLOAT32
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          IndexArn: !GetAtt KnowledgeVectorIndex.IndexArn
+  ManagedDataSource:
+    Type: AWS::Bedrock::DataSource
+    Condition: ManagedKnowledge
+    Properties:
+      KnowledgeBaseId: !GetAtt ManagedKnowledgeBase.KnowledgeBaseId
+      Name: documents
+      DataDeletionPolicy: RETAIN
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !GetAtt KnowledgeDocumentsBucket.Arn
+          InclusionPrefixes: [knowledge/]
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          ChunkingStrategy: FIXED_SIZE
+          FixedSizeChunkingConfiguration:
+            MaxTokens: 300
+            OverlapPercentage: 20
+  KnowledgeTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      SSESpecification: {SSEEnabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+  KnowledgeApiFunction:
+    Type: AWS::Serverless::Function
+    Condition: KnowledgeConfigured
+    Metadata: {BuildMethod: makefile}
+    Properties:
+      CodeUri: ../
+      PermissionsBoundary: !If [HasRuntimeBoundary, !Ref RuntimeBoundaryArn, !Ref AWS::NoValue]
+      Handler: kirocrew_custom.saas.bootstrap.handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 512
+      Timeout: 120
+      ReservedConcurrentExecutions: 5
+      Environment:
+        Variables:
+          KNOWLEDGE_PLANE: "true"
+          KNOWLEDGE_ENABLED: "true"
+          KNOWLEDGE_BASE_ID: !If [ManagedKnowledge, !GetAtt ManagedKnowledgeBase.KnowledgeBaseId, !Ref KnowledgeBaseId]
+          KNOWLEDGE_DATA_SOURCE_ID: !If [ManagedKnowledge, !GetAtt ManagedDataSource.DataSourceId, !Ref KnowledgeDataSourceId]
+          KNOWLEDGE_BUCKET: !Ref KnowledgeDocumentsBucket
+          KNOWLEDGE_TABLE: !Ref KnowledgeTable
+          AWS_ACCOUNT_ID: !Ref AWS::AccountId
+          COGNITO_POOL_ID: !Ref UserPool
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_DOMAIN: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+          COGNITO_CALLBACK_URL: !Ref CallbackUrl
+          COGNITO_LOGOUT_URL: !Ref LogoutUrl
+          RECORDS_TABLE: !Ref RecordsTable
+          PLATFORM_ROLES_TABLE: !Ref PlatformRolesTable
+          CONTROL_TABLE: !Ref ControlTable
+          AUDIT_TABLE: !Ref AuditTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem]
+              Resource:
+                - !GetAtt RecordsTable.Arn
+                - !GetAtt ControlTable.Arn
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt KnowledgeTable.Arn
+            - Effect: Allow
+              Action: [dynamodb:PutItem]
+              Resource: !GetAtt AuditTable.Arn
+            - Effect: Allow
+              Action: [s3:PutObject]
+              Resource: !Sub '${KnowledgeDocumentsBucket.Arn}/knowledge/*'
+            - Effect: Allow
+              Action: [bedrock:Retrieve, bedrock:IngestKnowledgeBaseDocuments, bedrock:GetKnowledgeBaseDocuments]
+              Resource: !If
+                - ManagedKnowledge
+                - !GetAtt ManagedKnowledgeBase.KnowledgeBaseArn
+                - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${KnowledgeBaseId}' 
+      Events:
+        UploadKnowledge:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/knowledge/documents/{document}
+            Method: PUT
+        KnowledgeStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/knowledge/documents/{document}
+            Method: GET
+        ShareKnowledge:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/knowledge/documents/{document}/sharing
+            Method: PUT
+        QueryKnowledge:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}/knowledge/query
+            Method: POST
+        AgentKnowledge:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PooledHttpApi
+            Path: /companies/{company}/organizations/{organization}/spaces/{space}/agents/{agent}/knowledge/query
+            Method: POST
+Outputs:
+  HttpApiId:
+    Value: !Ref PooledHttpApi
+  KnowledgeDocumentsBucketName:
+    Value: !Ref KnowledgeDocumentsBucket
+  KnowledgeTableName:
+    Value: !Ref KnowledgeTable
+  ApiUrl:
+    Value: !Sub 'https://${PooledHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  CognitoIssuer:
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UserPool}'
+  CognitoClientId:
+    Value: !Ref UserPoolClient
+  RecordsTableName:
+    Value: !Ref RecordsTable
+  AuditTableName:
+    Value: !Ref AuditTable
+  PlatformRolesTableName:
+    Value: !Ref PlatformRolesTable
+  ControlTableName:
+    Value: !Ref ControlTable

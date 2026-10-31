@@ -37,6 +37,7 @@ from kiro_crew import acp_tool_gate
 from kiro_crew.acp.client import AcpClient
 from kiro_crew.acp.kas_agents import to_client_custom_agent
 from kiro_crew.acp.types import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_DEEPSEEK,
@@ -145,6 +146,7 @@ class TestCapabilitySet:
                 ACP_BACKEND_GOOSE,
                 ACP_BACKEND_DEEPSEEK,
                 ACP_BACKEND_PI,
+                ACP_BACKEND_BEDROCK,
             }
         )
         assert ACP_BACKEND_KIRO not in ACP_BACKENDS_MEMBER_DISPATCH
@@ -1049,10 +1051,11 @@ class TestSelectProviderBackend:
 
         assert select_provider_backend("dashboard_abc", "kas", "") == ""
 
-    def test_denied_member_backend_degrades_to_kiro(self):
+    def test_denied_member_backend_raises_without_fallback(self):
         from kiro_crew.members import select_provider_backend
 
-        assert select_provider_backend(MEMBER_KEY, "no-such-backend", "") == ""
+        with pytest.raises(ValueError, match="Cannot reach AI"):
+            select_provider_backend(MEMBER_KEY, "no-such-backend", "")
 
 
 class TestSessionHistoryWriteProtected:

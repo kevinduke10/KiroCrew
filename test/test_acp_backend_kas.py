@@ -1,7 +1,7 @@
 """ACP backend selection: the ``kas`` (kiro-agent) backend identifier.
 
 KAS is an ACP backend alongside kiro-cli and claude-agent-acp. An absent
-``agent.acp_backend`` selects KAS, while every explicit choice remains stored.
+``agent.acp_backend`` selects native Bedrock, while every explicit choice remains stored.
 These tests pin both the default and the selector reaching the client.
 
 The validation test matters because an unrecognized backend string would pass
@@ -23,6 +23,7 @@ import pytest
 from kiro_crew.acp.runtime import AcpRuntime
 from kiro_crew.acp.session_provider import AcpSessionProvider
 from kiro_crew.acp.types import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_GOOSE,
@@ -106,6 +107,7 @@ class TestBackendPredicates:
             provider.is_goose_backend,
             provider.is_deepseek_backend,
             provider.is_copilot_backend,
+            provider.client.backend == ACP_BACKEND_BEDROCK,
         ]
         assert sum(held) == 1
 
@@ -261,11 +263,11 @@ class TestConfigThreading:
     future refactor from dropping the kwarg silently.
     """
 
-    def test_default_config_is_kas(self):
+    def test_default_config_is_bedrock(self):
         cfg = KiroCrewConfig()
-        assert cfg.agent.acp_backend == ACP_BACKEND_KAS
+        assert cfg.agent.acp_backend == ACP_BACKEND_BEDROCK
         provider = cfg.create_provider_factory()(session_key="test:default", agent="")
-        assert provider.is_kas_backend is True
+        assert provider.client.backend == ACP_BACKEND_BEDROCK
         assert provider.is_kiro_backend is False
 
     def test_configured_kas_reaches_the_provider(self):
@@ -308,15 +310,15 @@ class TestConfigRoundTrip:
         assert cfg.agent.acp_backend == ACP_BACKEND_KIRO
         assert cfg.agent.streaming is False
 
-    def test_absent_key_loads_as_kas_and_every_reader_sees_it(self, tmp_path):
+    def test_absent_key_loads_as_bedrock_and_every_reader_sees_it(self, tmp_path):
         """``to_dict()`` serves every reader, so it carries the RESOLVED harness.
 
         Only ``save()``'s disk write keeps an absent choice absent (see
         ``TestSaveKeepsAnAbsentChoiceAbsent``).
         """
         cfg = _load_agent_config({}, tmp_path)
-        assert cfg.agent.acp_backend == ACP_BACKEND_KAS
-        assert cfg.to_dict()["agent"]["acp_backend"] == ACP_BACKEND_KAS
+        assert cfg.agent.acp_backend == ACP_BACKEND_BEDROCK
+        assert cfg.to_dict()["agent"]["acp_backend"] == ACP_BACKEND_BEDROCK
 
     def test_kas_survives_a_load_from_disk(self, tmp_path):
         """The selectable value must reach the provider, not degrade.
@@ -338,13 +340,13 @@ class TestConfigRoundTrip:
         assert cfg.agent.acp_backend == ACP_BACKEND_KIRO
         assert cfg.to_dict()["agent"]["acp_backend"] == KIRO_STORED
 
-    def test_a_stored_empty_string_is_no_choice_and_loads_kas_silently(self, tmp_path, caplog):
+    def test_a_stored_empty_string_is_no_choice_and_loads_bedrock_silently(self, tmp_path, caplog):
         """Every install before this change holds "", and it must follow the default."""
         caplog.set_level("WARNING")
         cfg = _load_agent_config({"acp_backend": "", "member_acp_backend": ""}, tmp_path)
-        assert cfg.agent.acp_backend == ACP_BACKEND_KAS
-        assert cfg.agent.member_acp_backend == ACP_BACKEND_KAS
-        assert cfg.to_dict()["agent"]["acp_backend"] == ACP_BACKEND_KAS
+        assert cfg.agent.acp_backend == ACP_BACKEND_BEDROCK
+        assert cfg.agent.member_acp_backend == ACP_BACKEND_BEDROCK
+        assert cfg.to_dict()["agent"]["acp_backend"] == ACP_BACKEND_BEDROCK
         assert "Ignoring agent." not in caplog.text
 
     def test_a_stored_kiro_member_backend_reads_as_kas(self, tmp_path):
@@ -352,7 +354,7 @@ class TestConfigRoundTrip:
         cfg = _load_agent_config({"member_acp_backend": KIRO_STORED}, tmp_path)
         assert cfg.agent.member_acp_backend == ACP_BACKEND_KAS
         assert cfg.to_dict()["agent"]["member_acp_backend"] == ACP_BACKEND_KAS
-        assert _load_agent_config({}, tmp_path).agent.member_acp_backend == ACP_BACKEND_KAS
+        assert _load_agent_config({}, tmp_path).agent.member_acp_backend == ACP_BACKEND_BEDROCK
 
     def test_the_member_remap_is_logged_once(self, tmp_path, monkeypatch, caplog):
         """The remap is visible: one info line names the stored and the used value."""
@@ -388,26 +390,16 @@ class TestConfigRoundTrip:
         assert agent["member_acp_backend"] == KIRO_STORED
 
     @pytest.mark.parametrize("bad", [7, [], None])
-    def test_wrong_typed_explicit_values_take_the_kiro_floor(self, bad, tmp_path):
-        """A malformed explicit value differs from an absent key.
-
-        Validation keeps that distinction before its type pass, so a bad stored
-        choice cannot silently become the KAS product default.
-        """
-        cfg = _load_agent_config({"acp_backend": bad}, tmp_path)
-        assert cfg.agent.acp_backend == ACP_BACKEND_KIRO
+    def test_wrong_typed_explicit_values_raise(self, bad, tmp_path):
+        """An invalid saved choice must not select a different backend."""
+        with pytest.raises(ValueError, match="Cannot reach AI"):
+            _load_agent_config({"acp_backend": bad}, tmp_path)
 
     @pytest.mark.parametrize("bad", ["kiro-cli", "KAS", "claude_code", "byo-harness"])
-    def test_unselectable_explicit_values_degrade_to_the_kiro_floor(self, bad, tmp_path):
-        """A typo must not take the gateway down, and must not pick KAS.
-
-        ``AcpProvider`` raises on an unknown backend, so an unnormalized value
-        would turn a config typo into a startup crash. Only an ABSENT key earns
-        the KAS default; a bad explicit value takes the Kiro CLI floor
-        (harness-parity H3).
-        """
-        cfg = _load_agent_config({"acp_backend": bad}, tmp_path)
-        assert cfg.agent.acp_backend == ACP_BACKEND_KIRO
+    def test_unselectable_explicit_values_raise(self, bad, tmp_path):
+        """An invalid saved choice must not select a different backend."""
+        with pytest.raises(ValueError, match="Cannot reach AI"):
+            _load_agent_config({"acp_backend": bad}, tmp_path)
 
     def test_masked_config_response_reports_the_resolved_default(self, tmp_path):
         """GET /api/config/kirocrew must name the harness actually in use.
@@ -418,7 +410,7 @@ class TestConfigRoundTrip:
         from kiro_crew.dashboard.handlers.core import _masked_config_dict
 
         cfg = _load_agent_config({}, tmp_path)
-        assert _masked_config_dict(cfg)["agent"]["acp_backend"] == ACP_BACKEND_KAS
+        assert _masked_config_dict(cfg)["agent"]["acp_backend"] == ACP_BACKEND_BEDROCK
 
 
 class TestSaveKeepsAnAbsentChoiceAbsent:
@@ -460,20 +452,20 @@ class TestSaveKeepsAnAbsentChoiceAbsent:
 
         (home / "config.json").write_text(json.dumps({"agent": {}}), encoding="utf-8")
         _run_config_cmd(argparse.Namespace(config_action="get", key="agent.acp_backend"))
-        assert capsys.readouterr().out.strip() == ACP_BACKEND_KAS
+        assert capsys.readouterr().out.strip() == ACP_BACKEND_BEDROCK
 
     def test_the_boot_default_write_stores_no_choice(self, home):
         # No file yet: the boot path's ``KiroCrewConfig().save()``.
         KiroCrewConfig().save()
         assert "acp_backend" not in self._agent_on_disk(home)
-        assert KiroCrewConfig.load().agent.acp_backend == ACP_BACKEND_KAS
+        assert KiroCrewConfig.load().agent.acp_backend == ACP_BACKEND_BEDROCK
 
     def test_a_full_save_of_an_absent_choice_keeps_it_absent(self, home):
         (home / "config.json").write_text(
             json.dumps({"agent": {"streaming": False}}), encoding="utf-8"
         )
         cfg = KiroCrewConfig.load()
-        assert cfg.to_dict()["agent"]["acp_backend"] == ACP_BACKEND_KAS
+        assert cfg.to_dict()["agent"]["acp_backend"] == ACP_BACKEND_BEDROCK
         cfg.save()
         agent = self._agent_on_disk(home)
         assert "acp_backend" not in agent
@@ -516,7 +508,12 @@ class TestSaveKeepsAnAbsentChoiceAbsent:
         keys = ("acp_backend", "member_acp_backend")
         base_agent = {} if stored is None else dict.fromkeys(keys, stored)
         (home / "config.json").write_text(json.dumps({"agent": base_agent}), encoding="utf-8")
-        overlay_agent = KiroCrewConfig.load().to_dict()["agent"] if whole_agent_overlay else {}
+        if whole_agent_overlay and stored == "byo-harness":
+            with pytest.raises(ValueError, match="Cannot reach AI"):
+                KiroCrewConfig.load()
+            overlay_agent = KiroCrewConfig().to_dict()["agent"]
+        else:
+            overlay_agent = KiroCrewConfig.load().to_dict()["agent"] if whole_agent_overlay else {}
         overlay_agent.update(dict.fromkeys(keys, KIRO_STORED))
         overlay_agent["streaming"] = False
         (home / "config.local.json").write_text(
@@ -649,14 +646,14 @@ class TestNoImportCycle:
                 sys.executable,
                 "-c",
                 "import kiro_crew.config.loader as m;"
-                "print(m._normalize_acp_backend(''), m._normalize_acp_backend('nope'), sep='|')",
+                "print(m._normalize_acp_backend(None), m._normalize_acp_backend('kas'), sep='|')",
             ],
             capture_output=True,
             text=True,
             timeout=120,
         )
         assert proc.returncode == 0, proc.stderr
-        assert proc.stdout.strip().split("|") == ["", ""]
+        assert proc.stdout.strip().split("|") == [ACP_BACKEND_BEDROCK, ACP_BACKEND_KAS]
 
 
 class TestAKiroCliPickRunsOnKasOnceV3IsConfirmed:
@@ -706,17 +703,16 @@ class TestAKiroCliPickRunsOnKasOnceV3IsConfirmed:
         assert cfg.agent.acp_backend == ACP_BACKEND_KIRO
 
     @pytest.mark.parametrize("bad", ["kiro-cli", "byo-harness", 7, True, [], None])
-    def test_a_degraded_value_takes_the_floor_not_kas(self, bad, tmp_path, registry):
-        """The floor a typo takes is not a pick (harness-parity H3)."""
+    def test_an_invalid_choice_raises_even_with_a_confirmed_cli(self, bad, tmp_path, registry):
         registry.confirm_kiro_cli_offers_kas()
-        assert _load_agent_config({"acp_backend": bad}, tmp_path).agent.acp_backend == (
-            ACP_BACKEND_KIRO
-        )
+        with pytest.raises(ValueError, match="Cannot reach AI"):
+            _load_agent_config({"acp_backend": bad}, tmp_path)
 
     def test_a_malformed_value_is_warned_about_once(self, tmp_path, registry, caplog):
         caplog.set_level("WARNING")
-        _load_agent_config({"acp_backend": 7}, tmp_path)
-        assert caplog.text.count("Ignoring agent.acp_backend") == 1
+        with pytest.raises(ValueError, match="Cannot reach AI"):
+            _load_agent_config({"acp_backend": 7}, tmp_path)
+        assert caplog.text.count("Invalid agent.acp_backend") == 1
 
 
 class TestAProcessOutsideTheGatewayReachesTheSameVerdict:

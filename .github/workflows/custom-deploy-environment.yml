@@ -1,0 +1,85 @@
+name: Custom environment deployment
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}-plan
+    outputs:
+      plan_key: ${{ steps.plan.outputs.plan_key }}
+      plan_version: ${{ steps.plan.outputs.plan_version }}
+      plan_digest: ${{ steps.plan.outputs.plan_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: '1.14.0'
+          terraform_wrapper: false
+      - name: Install deployment tooling
+        run: python -m pip install boto3==1.40.66 PyYAML==6.0.3
+      - name: Validate account configuration
+        id: config
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+        run: python -m custom.scripts.deployment config --environment "$TARGET_ENV"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ steps.config.outputs.plan_role }}
+          aws-region: ${{ steps.config.outputs.region }}
+          allowed-account-ids: ${{ steps.config.outputs.account_id }}
+          role-session-name: kc-plan-${{ github.run_id }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release
+          path: release
+      - name: Create immutable private plan
+        id: plan
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+        run: python -m custom.scripts.deployment plan --environment "$TARGET_ENV"
+  apply:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: ${{ inputs.environment }}-apply
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: '1.14.0'
+          terraform_wrapper: false
+      - name: Install deployment tooling
+        run: python -m pip install boto3==1.40.66 PyYAML==6.0.3
+      - name: Validate account configuration
+        id: config
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+        run: python -m custom.scripts.deployment config --environment "$TARGET_ENV"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ steps.config.outputs.apply_role }}
+          aws-region: ${{ steps.config.outputs.region }}
+          allowed-account-ids: ${{ steps.config.outputs.account_id }}
+          role-session-name: kc-apply-${{ github.run_id }}
+      - name: Apply the reviewed saved plan and probe public endpoints
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+          PLAN_KEY: ${{ needs.plan.outputs.plan_key }}
+          PLAN_VERSION: ${{ needs.plan.outputs.plan_version }}
+          PLAN_DIGEST: ${{ needs.plan.outputs.plan_digest }}
+        run: python -m custom.scripts.deployment apply --environment "$TARGET_ENV"

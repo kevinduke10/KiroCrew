@@ -45,9 +45,6 @@ _READ_STAGE_DEPARTURES = {
     ("agent", "session_control"): False,
     ("agent", "member_dispatch"): False,
     ("agent", "crew_panel"): False,
-    # A present but malformed harness choice is an unusable explicit choice, not
-    # an absent key: it takes the Kiro CLI floor, never the KAS product default.
-    ("agent", "acp_backend"): "",
     ("skills", "project_skills_enabled"): False,
     # Resolved by the loader's own degradation rule before the enum check runs.
     ("stt", "provider"): "off",
@@ -126,6 +123,11 @@ class TestAWrongTypedValueLoadsTheFieldDefault:
             if (section, spec.name) in _OWNED_ELSEWHERE:
                 continue
             default = getattr(bare, spec.name)
+            if section == "agent" and spec.name in {"acp_backend", "member_acp_backend"}:
+                with pytest.raises(ValueError, match="Cannot reach AI"):
+                    staged_load({section: {spec.name: _wrong_type(default)}})
+                checked.append(spec.name)
+                continue
             cfg = staged_load({section: {spec.name: _wrong_type(default)}})
             built = getattr(getattr(cfg, section), spec.name)
             checked.append(spec.name)
@@ -312,7 +314,7 @@ def _case(key: str, moves: list[tuple[type, str, object]], document: dict, read,
 def _move_cases() -> list:
     agent, dashboard, stt = sections.AgentConfig, sections.DashboardConfig, sections.SttConfig
     tailscale, instances = sections.TailscaleConfig, sections.InstancesConfig
-    backend = sorted(b for b in selectable_backends() if b)[0]
+    backend = next(b for b in sorted(selectable_backends()) if b and b != agent().acp_backend)
     account = {"telegram": {"accounts": {"ops": {"bot_token": "t", "soft_threshold_pct": "x"}}}}
     groups = [{"jid": "g@g.us"}]
     return [

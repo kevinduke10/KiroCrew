@@ -1,0 +1,389 @@
+{
+  "schema_version": 1,
+  "features": [
+    {
+      "id": "SPEC-0001",
+      "title": "Native Bedrock without an agent CLI",
+      "spec": "custom/specs/2026-10-29-native-bedrock.md",
+      "status": "in_progress",
+      "next_step": "Complete model/API coverage (AC5) and installed desktop adoption of native defaults (AC6/SPEC-0013).",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "Imported the existing uncommitted Bedrock work and prior reported offline verification from this chat. Converse text/tool backend implemented; original any-model coverage remains open. No live AWS inference, commit, PR or release is claimed."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "moved_from": "docs/request-for-change/plans/2026-10-29-native-bedrock.md",
+          "note": "User-directed move into custom/ inside the existing repository. Preserve the prior events and legacy Git history; no product-scope change."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-30",
+          "status": "in_progress",
+          "note": "User mate-creation error exposed opt-in defaults, missing native mate capabilities and a stock installed desktop launcher. SPEC-0013 repairs the source and replaces CLI fallback with Cannot reach AI errors. Added AC6 so installed runtime/config adoption remains visible; no AWS setup or host config change is claimed."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0002",
+      "title": "Persistent spec-driven development workflow",
+      "spec": "custom/specs/2026-10-29-spec-workflow.md",
+      "status": "verified",
+      "next_step": "Use the workflow for new features or resume SPEC-0001; commit only on user instruction.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User requested repository spec-driven development with trackable history. Added the workflow, tracker, indexed plans, agent routing and read-only inspection/check commands. Verification is pending."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "All 19 focused tests passed. Tracker CLI checks, merge-base validation, documentation lint, formatting/import/lint checks and YAML parsing passed locally. History reads are covered with mocked Git; these files remain uncommitted and remote CI has not run."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "verified",
+          "moved_from": "docs/request-for-change/plans/2026-10-29-spec-workflow.md",
+          "note": "User-directed move into custom/ inside the existing repository. Preserve the prior events and legacy Git history; no product-scope change."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0003",
+      "title": "Isolate custom features inside this repository",
+      "spec": "custom/specs/2026-10-29-custom-isolation.md",
+      "status": "verified",
+      "next_step": "Use custom/ for new work; resume SPEC-0001 model coverage. Commit only when the user asks.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User authorized extraction and explicitly chose a separate folder in this repository, not a separate repository. Plan records the boundary and required verification."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "moved_from": "docs/request-for-change/plans/2026-10-29-custom-isolation.md",
+          "note": "User-directed move into custom/ inside the existing repository. Preserve the prior events and legacy Git history; no product-scope change."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "Extraction completed in this same repository. Built/initialized the custom wheel without AWS credentials; combined 395 tests and final 52 custom tests passed, with overlap. Targeted types, docs, lint, harness and history-migration checks passed. The full line-cap gate flags an unchanged upstream run_turn.py at 2,030 lines. No separate repository, commit, push or live AWS inference was created."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0004",
+      "title": "Isolated company workspaces for a business SaaS",
+      "spec": "custom/specs/2026-10-29-company-workspaces.md",
+      "status": "in_progress",
+      "next_step": "Verify live deployment and extend organization scope into shared agent execution, memory and streams; SPEC-0009 supplies organization API and browser management.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "draft",
+          "note": "Captured SaaS product intent: internal groups share agents, memory and authorized activity, with private spaces. User clarified no cross-company sharing, complete company isolation in AWS, and audited administrator access to private content. Dedicated AWS account per company is a proposed architecture; product implementation and deployment remain pending."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "draft",
+          "note": "Recorded an illustrative USD 150\u2013300/company/month dedicated-stack infrastructure budget using current AWS rate references and explicit light-load/single-worker assumptions. Bedrock, significant scaling and engineering labor are excluded. Incremental cost needs a pooled baseline; no infrastructure or measured bill exists."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "draft",
+          "note": "User rejected the initial infrastructure cost as too high. SPEC-0005 proposes a lower fixed-cost pilot while preserving account isolation and audited admin access. Initial Fargate budget remains a comparison only; small-host capacity is unverified."
+        },
+        {
+          "seq": 4,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User selected shared managed/serverless infrastructure with logical company isolation, superseding the dedicated-account starting requirement. Dedicated accounts are a future option. No cross-company sharing and audited private administrator access remain required. Started the offline authorization foundation in SPEC-0006; no AWS deployment."
+        },
+        {
+          "seq": 5,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "SPEC-0007 adds verified Cognito access-token authentication, authoritative DynamoDB membership/resources, conditional durable audit and a separate guarded Lambda read/edit API. Offline tests and template checks passed; company onboarding, browser PKCE UI, agent/memory integration and deployed isolation evidence remain open."
+        },
+        {
+          "seq": 6,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User requires organizations with nested sub-organizations and agent visibility only within the user organization. Added AC13-AC15 and a hierarchy contract: same-company acyclic parents, exact-organization membership, no inherited parent/child/sibling visibility, existing private grants retained. Requirements checkpoint only; organization creation and enforcement are not implemented or deployed."
+        },
+        {
+          "seq": 7,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "SPEC-0009 verifies AC13 locally with organization/sub-organization creation and explicit memberships. Browser management and exact-organization resource/directory authorization are implemented. Shared agent workers, scoped memory, revocation across streams and deployed isolation remain open; no cloud deployment."
+        },
+        {
+          "seq": 8,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User explicitly requested a Superman role administering every company. SPEC-0008 supplies the audited platform operator exception, browser sign-in and controlled onboarding; ordinary company/organization boundaries remain. Offline verification passed; live production isolation and agent/memory/worker integration remain open."
+        },
+        {
+          "seq": 9,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "SPEC-0010 implements the user-selected company/organization role model. Owner appoints company admins and transfers ownership atomically; Company Admin manages Members; Organization Admin manages only exact-organization Members. Existing resource/private audit boundaries and Superman separation remain. Offline checks passed; no deployment."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0005",
+      "title": "Lower-cost company-isolated pilot",
+      "spec": "custom/specs/2026-10-29-lean-company-pilot.md",
+      "status": "cancelled",
+      "next_step": "EC2 pilot deferred in favor of pooled serverless (SPEC-0004/0006). Retain the worksheet for a future account-isolated option.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "draft",
+          "note": "User requested a cheaper starting configuration. Proposed one small EC2 host per company account, local encrypted storage and coordinated backups, with no NAT/ALB/RDS. Worksheet targets USD 40\u201350/month at 4 GB, conditional on a benchmark; upstream full-workload sizing currently starts at 16 GB. No deployment, new runtime behavior or capacity guarantee is claimed."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "draft",
+          "note": "User requested a logical-isolation/shared-serverless cost comparison. Recorded USD 6\u201315/company/month plus USD 20\u201360 shared overhead for explicit light-use assumptions, excluding inference. This is an estimate scenario, not approval to remove the prior dedicated-account requirement. No runtime or infrastructure was changed."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "cancelled",
+          "note": "User selected the pooled serverless scenario as the starting architecture and deferred account isolation. Cancelled current EC2 pilot delivery, preserving its original acceptance criteria and cost comparison. The selected scenario is still non-deployable and unmeasured."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0006",
+      "title": "Company and space authorization foundation",
+      "spec": "custom/specs/2026-10-29-tenant-authorization.md",
+      "status": "verified",
+      "next_step": "Continue scoped agents/memory and workers; SPEC-0008 supplies browser onboarding and platform administration. Verify live AWS boundaries before production.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "Started a custom-only authorization library for the selected pooled architecture. Protocol-based authoritative membership/resource resolution and fail-closed audit-before-read path; no gateway integration or live AWS guarantees yet."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "Offline foundation verified: all 76 custom tests passed, including 24 new access matrix cases; targeted types, formatting and lint passed. Tests prove audit-before-callback ordering and deny-on-audit-failure with injected adapters, not production durability. No gateway integration, AWS deployment, commit or push."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "SPEC-0007 adds verified Cognito access-token authentication, authoritative DynamoDB membership/resources, conditional durable audit and a separate guarded Lambda read/edit API. Offline tests and template checks passed; company onboarding, browser PKCE UI, agent/memory integration and deployed isolation evidence remain open."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0007",
+      "title": "Cognito and persistent pooled SaaS API",
+      "spec": "custom/specs/2026-10-29-pooled-api.md",
+      "status": "verified",
+      "next_step": "Continue scoped agents/memory and workers; SPEC-0008 supplies browser onboarding and platform administration. Verify live AWS boundaries before production.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User authorized the next integration slice. Added a scoped plan for verified Cognito identity, persistent membership/resource adapters, durable audit, guarded read/edit API and reviewable infrastructure source. No AWS deployment authorized or credentials required."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "Offline backend slice verified: 161 custom tests passed, including real RSA and guarded API integration tests with mocked AWS transports. Targeted types/style and cfn-lint 1.59.0 (SAM transform) passed. Custom wheel built offline and imported without core/AWS clients. No live cloud, IAM simulation, Linux SAM build, browser UI, commit or deployment is claimed."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0008",
+      "title": "Browser onboarding and Superman administration",
+      "spec": "custom/specs/2026-10-29-platform-administration.md",
+      "status": "verified",
+      "next_step": "Build Linux SAM artifacts and verify live AWS behavior; seed the first Superman grant only through an audited trusted operator process after deployment.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User authorized browser/onboarding work and explicitly requested a Superman role administering all companies. Platform operator exception is distinct from customer sharing. Preserve pending organization scope requirements and existing history; no AWS deployment or real invitations."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "Implemented browser PKCE administration, transactional company/root onboarding, invitations, suspension/reactivation and a separate authoritative Superman role. All 211 current Python tests and five browser PKCE tests passed, with targeted types/style and SAM source/transform checks. Audit-before-action and role revocation covered offline. Concurrent SPEC-0009 organization work preserved. No live AWS, invitations, role grants, commit or deployment."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "Final checkpoint: full docs lint, custom links, tracker and whitespace checks passed. SAM translated to 29 resources without AWS calls. Final wheel includes browser assets matching current source; extracted-wheel serving/import smoke passed. Global role bootstrap remains an explicit trusted-operator deployment task, not an automatic grant."
+        },
+        {
+          "seq": 4,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "SPEC-0010 implements the user-selected company/organization role model. Owner appoints company admins and transfers ownership atomically; Company Admin manages Members; Organization Admin manages only exact-organization Members. Existing resource/private audit boundaries and Superman separation remain. Offline checks passed; no deployment."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0009",
+      "title": "Organization hierarchy and agent visibility",
+      "spec": "custom/specs/2026-10-29-organizations.md",
+      "status": "verified",
+      "next_step": "Verify Linux SAM deployment and live AWS isolation; retain organization scope in future agent jobs, streams and memory. No deployment or commit performed.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User authorized implementation. Backend scope includes nested creation, explicit membership management, organization-qualified resources and filtered agent discovery. Browser UI and future job integration remain open in SPEC-0004."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "Implemented nested organization creation, explicit memberships, organization-qualified resources and filtered agent discovery, plus a web panel connected to the concurrent browser shell. Combined local custom suite passed 209 tests; Node browser suite passed 10 tests; browser fixture interaction, scoped SDK requests, cfn-lint, targeted types/style, docs and tracker checks passed. Platform support remains a separate audited exception and never grants ordinary directory membership. No AWS deployment or commit; worker/stream/memory integration remains open."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "SPEC-0010 implements the user-selected company/organization role model. Owner appoints company admins and transfers ownership atomically; Company Admin manages Members; Organization Admin manages only exact-organization Members. Existing resource/private audit boundaries and Superman separation remain. Offline checks passed; no deployment."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0010",
+      "title": "Company and organization roles",
+      "spec": "custom/specs/2026-10-29-company-roles.md",
+      "status": "verified",
+      "next_step": "Integrate roles into future billing/agent/worker APIs and verify live AWS permissions. Explicit Superman owner bootstrap is required for legacy companies without an owner.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User selected Company Owner, Company Admin, Organization Admin and Member. Superman remains platform-only. Plan records scoped permissions, legacy compatibility and atomic ownership transfer; no deployment or real role grants."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "verified",
+          "note": "Implemented Company Owner, Company Admin, exact-scope Organization Admin and Member with normalized legacy records, atomic ownership transfer, audited role changes and UI selectors. All 278 current Python tests and 11 browser checks passed; targeted types/style, SAM source/transform, wheel smoke and docs checks passed. Concurrent knowledge work preserved. No live role grants, deployment, commit or push."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0011",
+      "title": "Company and organization RAG knowledge",
+      "spec": "custom/specs/2026-10-29-rag-knowledge.md",
+      "status": "in_progress",
+      "next_step": "Configure and verify live Bedrock ingestion/retrieval, then integrate the authorized endpoint with the future SaaS agent worker (AC7).",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User requests company-wide and organization RAG data. Explicitly selected sharing with a child and its entire subtree. Agent visibility remains exact-organization. No cloud deployment authorized."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "Implemented scoped S3/Bedrock knowledge API, authoritative manifests, selected-child subtree sharing, role/audit enforcement and web upload/status/sharing/preview. AC1\u2013AC6 verified offline (277 Python, 16 Node tests; SDK, type/lint and SAM checks). Added explicit AC7 to retain the user\u2019s full agent-run goal: live AWS and future SaaS worker integration remain open. No deployment, commit or push."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0012",
+      "title": "Consistent Dev, Test and Prod AWS deployments",
+      "spec": "custom/specs/2026-10-29-multi-account-deployment.md",
+      "status": "in_progress",
+      "next_step": "Replace user-requested placeholders when accounts/domains exist, bootstrap per-account state/OIDC, configure GitHub environment gates, and verify first live deployments and authenticated RAG/isolation/recovery checks.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-29",
+          "status": "ready",
+          "note": "Recorded user requirement for three separate Dev/Test/Prod AWS accounts. Proposed Terraform plus GitHub Actions for the existing serverless stack, with independent state/data, OIDC roles, immutable release promotion, drift checks and explicit SAM ownership. Argo CD reserved as an option if Kubernetes workers are selected. Design only; no infrastructure implementation, deployment, commit or push."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "User authorized Terraform and GitHub Actions implementation and explicitly deferred Argo. Implement account bootstrap, one SAM stack owner, immutable release promotion and separate plan/apply environment gates; cloud provisioning is not requested."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-29",
+          "status": "in_progress",
+          "note": "Implemented shared Terraform/SAM deployment, account-local state/artifact bootstrap, bounded OIDC plan/apply roles, runtime boundary, managed Bedrock/S3 Vectors, DNS/TLS, immutable release promotion, private saved plans, rollback and opt-in drift workflows. User confirmed account/domain placeholders. Offline: 294 custom Python tests including 16 deployment tests pass; four Terraform roots validate; two mock-provider runs, cfn-lint, actionlint, formatting/lint and tracker/link checks pass. AC2\u2013AC4 checked; AC5\u2013AC6 retain live isolation/recovery verification. No real AWS plan/apply, remote workflow run, commit or push."
+        }
+      ]
+    },
+    {
+      "id": "SPEC-0013",
+      "title": "CLI-free defaults, mates and explicit AI failures",
+      "spec": "custom/specs/2026-10-30-cli-free-mates.md",
+      "status": "in_progress",
+      "next_step": "Install/rebuild the fork for the desktop runtime, then update both active backend fields and restart; keep model auto until Bedrock is configured. Source fallback errors verified offline.",
+      "history": [
+        {
+          "seq": 1,
+          "date": "2026-10-30",
+          "status": "in_progress",
+          "note": "User reproduced kiro-cli-not-found during mate creation. Active config still selects KAS member/default behavior and model auto; AWS is not set up. User requests explicit AI-unreachable errors instead of fallback. Original CLI removal was incomplete; implement native defaults and mate paths without inventing credentials/model IDs."
+        },
+        {
+          "seq": 2,
+          "date": "2026-10-30",
+          "status": "in_progress",
+          "note": "Implemented native ordinary/member defaults, explicit unavailable/malformed backend errors and sanitized Cannot reach AI prompt failures; no CLI fallback. Native member/worker projection repaired without granting single-tool limits. Verified 312 custom tests, 353 harness/member/worker/replay tests, 47 mate API tests with loopback enabled, 267 non-API config/selection checks (overlaps custom), and 64 flake checks. Native ACP/MCP capture uses real local children with explicitly mocked inference, not AWS. Stock installed desktop app and active config unchanged; AC4 runtime adoption remains open. No commit/push."
+        },
+        {
+          "seq": 3,
+          "date": "2026-10-30",
+          "status": "in_progress",
+          "note": "Clean config/KAS-only rerun passed all 248 tests; the preceding combined non-API count includes custom selection tests and must not be added to the 312 custom count. Functional checks complete; docs lint running."
+        },
+        {
+          "seq": 4,
+          "date": "2026-10-30",
+          "status": "in_progress",
+          "note": "Repository docs lint finished successfully. Targeted lint, Linux-platform custom mypy, line-cap, harness/X-capture, flake-pattern and tracker checks passed. Source error behavior is complete; installed desktop/runtime and config adoption remains the explicit next step."
+        }
+      ]
+    }
+  ]
+}

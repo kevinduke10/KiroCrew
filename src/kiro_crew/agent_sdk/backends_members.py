@@ -14,6 +14,7 @@ in ``VOCABULARY_PATHS``, which is what lets its ``ACP_BACKEND*`` names be define
 from __future__ import annotations
 
 from kiro_crew.agent_sdk.backends import (
+    ACP_BACKEND_BEDROCK,
     ACP_BACKEND_CLAUDE,
     ACP_BACKEND_CODEX,
     ACP_BACKEND_DEEPSEEK,
@@ -71,8 +72,15 @@ from kiro_crew.agent_sdk.backends import (
 # ``test/fixtures/acp_frames/pi/saved-spec-projection-live.jsonl`` is a member session on
 # pi-acp 0.0.34 over pi 1.3.0 whose saved spec the client confirmed after
 # ``session/new``; the same drive with the spec edited after its save was refused.
+# Native Bedrock uses the same saved-spec MCP array and Crew permission gate.
+# Local runtime 1.0.0 transport is captured in
+# ``test/fixtures/acp_frames/bedrock/native-mcp-transport-live.jsonl`` with real
+# ACP/MCP children and explicitly mocked inference (no AWS access claimed).
+# Projection and worker context are separately covered by offline regressions;
+# native hooks and single-tool limits are not advertised.
 ACP_BACKENDS_MEMBER_CAPABILITIES = frozenset(
     {
+        ACP_BACKEND_BEDROCK,
         ACP_BACKEND_KIRO,
         ACP_BACKEND_KAS,
         ACP_BACKEND_CLAUDE,
@@ -123,7 +131,13 @@ ACP_BACKENDS_MATE_WORKER_TOOL_LIMITS = frozenset({ACP_BACKEND_KAS})
 # ``test/fixtures/acp_frames/claude/saved-spec-projection-live.jsonl``. The server a
 # spec declares, projected into the ``session/new`` array, ran in the session; the
 # worker's spec reaches claude through that same array.
-ACP_BACKENDS_MATE_WORKER_KIT = frozenset({ACP_BACKEND_KAS, ACP_BACKEND_CLAUDE})
+# Native Bedrock uses the same saved-spec MCP array and Crew permission gate.
+# Local runtime 1.0.0 transport is captured in
+# ``test/fixtures/acp_frames/bedrock/native-mcp-transport-live.jsonl`` with real
+# ACP/MCP children and explicitly mocked inference (no AWS access claimed).
+# Projection and worker context are separately covered by offline regressions;
+# native hooks and single-tool limits are not advertised.
+ACP_BACKENDS_MATE_WORKER_KIT = frozenset({ACP_BACKEND_KAS, ACP_BACKEND_CLAUDE, ACP_BACKEND_BEDROCK})
 
 # Backends of the set above whose worker gets its prompt only from the
 # ``[AGENT SYSTEM PROMPT]`` context block: their mirrors project no spec prompt
@@ -131,7 +145,7 @@ ACP_BACKENDS_MATE_WORKER_KIT = frozenset({ACP_BACKEND_KAS, ACP_BACKEND_CLAUDE})
 # principles and its crewmate's prompt (``context_assembly.agent_spec
 # ._crewmate_worker_prompt``). KAS is not here: its wire spec already carries both,
 # so its block stays the base.
-ACP_BACKENDS_MATE_WORKER_PROMPT_IN_CONTEXT = frozenset({ACP_BACKEND_CLAUDE})
+ACP_BACKENDS_MATE_WORKER_PROMPT_IN_CONTEXT = frozenset({ACP_BACKEND_CLAUDE, ACP_BACKEND_BEDROCK})
 
 # Backends that can mount a DIFFERENT MCP tool set on one session than the
 # on-disk agent template declares — the capability crew-member dispatch rides
@@ -343,6 +357,7 @@ ACP_BACKENDS_MATE_WORKER_PROMPT_IN_CONTEXT = frozenset({ACP_BACKEND_CLAUDE})
 # server answered it (``identity_unattested``, as the probe key names no live session).
 ACP_BACKENDS_MEMBER_DISPATCH = frozenset(
     {
+        ACP_BACKEND_BEDROCK,
         ACP_BACKEND_CLAUDE,
         ACP_BACKEND_KAS,
         ACP_BACKEND_CODEX,

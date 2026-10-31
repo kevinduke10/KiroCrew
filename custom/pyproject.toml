@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kirocrew-custom"
+version = "0.1.0"
+description = "Repo-local Bedrock runtime and extensions for the Kiro Crew fork"
+requires-python = ">=3.12"
+dependencies = ["kirocrew>=0.12,<0.13"]
+
+[project.optional-dependencies]
+bedrock = ["boto3>=1.35,<2", "mcp>=1.12,<2"]
+saas = ["boto3>=1.35,<2", "PyJWT[crypto]>=2.12,<3"]
+dev = ["pytest==9.0.3", "pytest-asyncio==0.21.2", "pytest-timeout==2.2.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["kirocrew_custom*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+addopts = "--timeout=120"
+
+[tool.setuptools.package-data]
+"kirocrew_custom.saas" = ["web/*.html", "web/*.mjs", "web/*.css"]

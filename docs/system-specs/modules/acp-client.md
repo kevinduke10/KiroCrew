@@ -9,6 +9,11 @@ ACP version 1 carries one session per process. The session receives its exact
 projected MCP array and the explicit model pin. `initialize` and `session/new`
 do not construct an AWS client; the first prompt does.
 
+Missing model configuration is refused before SDK creation. Prompt failures use
+safe authored `Cannot reach AI` messages and never start an alternate harness.
+The native mirror forwards `session_key` into the shared MCP projection so mate
+worker intent and the consumed saved-spec snapshot follow the existing seam.
+
 Every MCP invocation emits an approval request with adapter-authored
 `_meta.bedrock.serverName` and `toolName` plus the original arguments. Only a
 selected allow option executes it. Model output cannot select a transport or

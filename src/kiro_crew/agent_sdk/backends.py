@@ -365,8 +365,8 @@ ACP_BACKEND_KIRO = ""
 STORED_BACKEND_KIRO = "kiro"
 
 # The harness an install runs when ``agent.acp_backend`` holds no choice (absent
-# or ``""``) and KAS is selectable.
-DEFAULT_ACP_BACKEND = ACP_BACKEND_KAS
+# or ``""``). An unavailable default raises instead of selecting a CLI.
+DEFAULT_ACP_BACKEND = ACP_BACKEND_BEDROCK
 
 # The harness an explicit Kiro CLI choice runs on once this host's kiro-cli is known
 # to offer its v3 (KAS) engine. kiro-cli serves ``acp`` on v3 by default and is
@@ -895,7 +895,7 @@ def resolve_selected_backend(value: object) -> str:
     THE single gate, in the one place the pre-registry code already gated: called
     from ``_normalize_acp_backend`` on the way out of ``config.json``. What changed
     is only what it reads — the registry instead of a frozen literal — so the
-    coercion behaviour is unchanged from before the registry existed. The Kiro
+    gate refuses unavailable choices without selecting another harness. The Kiro
     construction path deliberately gains no second check: harness-parity H13 keeps
     that path free of conditionals added in service of an adapter, and a check there
     could not fire anyway, since ``AgentConfig`` is built in exactly one place and
@@ -913,39 +913,23 @@ def resolve_selected_backend(value: object) -> str:
 
     :data:`ACP_BACKEND_KIRO` resolves to itself here. Moving a stored Kiro CLI pick
     onto KAS happens once, at config load (:func:`kiro_cli_pick_backend`, called by
-    ``_read_backend_choice``), so a value this gate already answered -- the floor a
-    degraded member backend took, say -- is never moved again by a later call.
+    ``_read_backend_choice``), so a valid runtime id is not remapped here.
 
-    Only ``None`` (no choice) selects :data:`DEFAULT_ACP_BACKEND`, and only
-    while it is selectable; otherwise it takes the floor, silently. An
-    explicit value that is unselectable or unrecognized — a backend this build did
-    not register, one policy denied, one this host cannot serve, a typo, or the
-    non-string shapes a hand-edited ``config.json`` can hold — degrades to
-    :data:`GOVERNANCE_FLOOR_BACKEND` with the reason in the log rather than
-    propagating: ``AcpProvider`` rejects an unknown backend by raising, and startup
-    refusing with a reason is the contract (harness-parity H3).
+    Only ``None`` (no choice) selects :data:`DEFAULT_ACP_BACKEND`. An unavailable
+    default or explicit choice raises a safe AI error. No other harness is started
+    as recovery, including the registry's named governance floor (H3).
 
     An edition that registers a backend must do so before the first config load; the
     registry is read here, not cached, so ordering is the edition's to get right.
     """
     selectable = selectable_backends()
-    if value is None:
-        return (
-            DEFAULT_ACP_BACKEND if DEFAULT_ACP_BACKEND in selectable else GOVERNANCE_FLOOR_BACKEND
-        )
-    if isinstance(value, str) and value in selectable:
-        return value
-    # A host mark was announced once by whoever placed it; repeating it on every
-    # config load would bury that notice under copies of a vaguer one.
-    if isinstance(value, str) and value in _host_unservable:
-        return GOVERNANCE_FLOOR_BACKEND
-    logger.warning(
-        "Ignoring agent.acp_backend %r (not selectable in this build); using "
-        "the Kiro CLI floor. Selectable values: %s",
-        value,
-        ", ".join(repr(b) for b in selectable_stored_backend_values()),
+    requested = DEFAULT_ACP_BACKEND if value is None else value
+    if isinstance(requested, str) and requested in selectable:
+        return requested
+    raise ValueError(
+        "Cannot reach AI: the selected AI backend is unavailable or not permitted. "
+        "Select an available backend; no alternate backend was started."
     )
-    return GOVERNANCE_FLOOR_BACKEND
 
 
 def kiro_cli_pick_backend() -> str:

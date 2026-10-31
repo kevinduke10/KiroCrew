@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "kind": "design_profile",
+  "deployable": false,
+  "spec_id": "SPEC-0005",
+  "region": "us-east-1",
+  "company_boundary": "dedicated_aws_account",
+  "application": {
+    "host_count": 1,
+    "availability_zones": 1,
+    "backend": "bedrock",
+    "max_active_agent_turns_per_company": 1,
+    "extra_work": "durable_queue",
+    "local_generative_model": false,
+    "native_embedding_workers": 1,
+    "browser_and_media_workers": "not_in_pilot_baseline",
+    "space_authorization": "required_before_multiuser_use"
+  },
+  "compute": {
+    "candidate_instance_type": "t3a.medium",
+    "vcpu": 2,
+    "memory_gib": 4,
+    "purchase_model": "on_demand",
+    "cpu_credit_mode": "standard",
+    "memory_and_cpu_benchmark_required": true,
+    "fallback_instance_types": [
+      "t3a.large",
+      "t3a.xlarge"
+    ],
+    "known_constraint": "Upstream cloud sizing documents a roughly 10 GB working set for the full workload and a 16 GB tier floor. A lean Bedrock workload has not been measured."
+  },
+  "network": {
+    "subnet": "public",
+    "elastic_ipv4_count": 1,
+    "internet_gateway": true,
+    "nat_gateway_count": 0,
+    "load_balancer_count": 0,
+    "public_ingress_tcp_ports": [
+      80,
+      443
+    ],
+    "gateway_binding": "loopback_only_behind_tls_reverse_proxy",
+    "database_network_exposure": "none",
+    "administration": "ssm",
+    "cross_company_peering": false
+  },
+  "storage": {
+    "type": "encrypted_gp3_ebs",
+    "root_gib": 16,
+    "persistent_data_gib": 24,
+    "database": "sqlite_on_local_block_storage",
+    "external_vector_cluster": false,
+    "retain_data_volume_on_instance_replacement": true,
+    "backup_destination": "same_company_account",
+    "backup_method": "coordinated_sqlite_online_backup_and_retained_snapshots",
+    "restore_test_required": true,
+    "rpo_target_minutes": 15,
+    "rto_target_minutes": 60,
+    "recovery_targets_are_unverified": true
+  },
+  "credentials_and_audit": {
+    "aws_credentials": "least_privilege_ec2_instance_profile_for_trusted_services",
+    "agent_tool_access_to_host_aws_credentials": false,
+    "company_admin_private_access": "durably_audited_before_disclosure",
+    "audit_delivery": "company_scoped_append_only_service_permissions",
+    "cross_company_workload_permissions": false
+  },
+  "cost_assumptions": {
+    "checked_on": "2026-10-29",
+    "currency": "USD",
+    "hours_per_month": 730,
+    "compute_hourly_rates": {
+      "t3a.medium": 0.0376,
+      "t3a.large": 0.0752,
+      "t3a.xlarge": 0.1504
+    },
+    "public_ipv4_hourly": 0.005,
+    "gp3_gib_monthly": 0.08,
+    "backup_allowance_monthly": [
+      2,
+      6
+    ],
+    "logs_dns_keys_allowance_monthly": [
+      3,
+      8
+    ],
+    "assumed_customer_data_gib_max": 10,
+    "excluded": [
+      "Bedrock inference",
+      "significant data egress",
+      "heavy backup churn or audit volume",
+      "shared provisioning and control-plane infrastructure",
+      "paid identity-provider plans",
+      "paid security products and support plans",
+      "taxes",
+      "engineering and on-call labor"
+    ],
+    "sources": {
+      "compute": "https://aws.amazon.com/ec2/instance-types/t3/",
+      "storage": "https://aws.amazon.com/ebs/pricing/",
+      "ipv4": "https://aws.amazon.com/vpc/pricing/"
+    }
+  },
+  "status": "deferred_option"
+}

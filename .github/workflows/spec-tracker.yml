@@ -26,12 +26,14 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install core and local custom package
-        run: python -m pip install -e '.[dev]' -e './custom[bedrock]'
+        run: python -m pip install -e '.[dev]' -e './custom[bedrock,saas]'
       - name: Validate plans and preserve checkpoint history
         env:
           SPEC_BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
         run: python custom/scripts/spec_tracker.py check --base "$SPEC_BASE_REF"
       - name: Run custom tests with repository host isolation
         run: python -m pytest -c setup.cfg -n0 custom/tests
+      - name: Verify browser PKCE flow
+        run: node --test custom/tests/browser/*.test.mjs
       - name: Verify core integration contracts
         run: python -m pytest -n0 test/test_harness_parity.py test/test_provider_mirrors.py test/test_agent_sdk_backend_install.py test/test_backend_cards.py test/test_agent_host_contract_parity.py

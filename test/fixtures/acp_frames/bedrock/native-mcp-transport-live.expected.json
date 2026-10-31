@@ -1,0 +1,106 @@
+[
+  {
+    "agent_capabilities": {
+      "loadSession": false,
+      "mcpCapabilities": {
+        "http": true,
+        "sse": true
+      }
+    },
+    "agent_version": "1.0.0",
+    "frame": "response",
+    "id": 1,
+    "protocol_version": 1
+  },
+  {
+    "frame": "response",
+    "id": 2,
+    "session_id": "probe-session"
+  },
+  {
+    "action": "update",
+    "events": [
+      {
+        "kind": "tool_call",
+        "mcp_identity_trusted": true,
+        "mcp_server_name": "native-probe",
+        "title": "native-probe: worker_probe",
+        "tool_call_id": "probe-call",
+        "tool_identity_trusted": true,
+        "tool_kind": "other",
+        "tool_name": "worker_probe",
+        "wire_title": "native-probe: worker_probe"
+      }
+    ],
+    "frame": "session/update",
+    "session_update": "tool_call"
+  },
+  {
+    "action": "permission",
+    "events": [
+      {
+        "kind": "permission_request",
+        "mcp_identity_trusted": true,
+        "mcp_server_name": "native-probe",
+        "options": [
+          {
+            "id": "allow",
+            "label": "Allow once"
+          },
+          {
+            "id": "deny",
+            "label": "Deny"
+          }
+        ],
+        "request_id": "probe-permission",
+        "shell_classified": true,
+        "title": "native-probe: worker_probe",
+        "tool_call_id": "probe-call",
+        "tool_kind": "other",
+        "tool_name": "worker_probe"
+      }
+    ],
+    "frame": "session/request_permission",
+    "recorded_options": {
+      "always": "allow",
+      "once": "allow",
+      "reject": "deny"
+    }
+  },
+  {
+    "action": "update",
+    "events": [
+      {
+        "kind": "tool_result",
+        "tool_call_id": "probe-call",
+        "tool_final": true,
+        "tool_output": "native-worker-probe",
+        "tool_output_bytes": 19,
+        "tool_output_digest": "3ea1d68f9e50f98d9fc0a12750391bca5740d92f60698f3593c45696fbbe50c7",
+        "tool_status": "completed"
+      }
+    ],
+    "frame": "session/update",
+    "session_update": "tool_call_update"
+  },
+  {
+    "action": "update",
+    "events": [
+      {
+        "kind": "text_chunk",
+        "text": "native-worker-probe completed"
+      }
+    ],
+    "frame": "session/update",
+    "session_update": "agent_message_chunk",
+    "text_chunk": {
+      "text": "native-worker-probe completed",
+      "thinking": false
+    }
+  },
+  {
+    "frame": "response",
+    "id": 3,
+    "stop_reason": "end_turn"
+  }
+]

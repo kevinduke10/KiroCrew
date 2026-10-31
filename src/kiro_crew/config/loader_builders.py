@@ -473,12 +473,9 @@ def _read_backend_choice(section: _sections.SectionReader, agent_data: dict, key
     The config-file vocabulary is translated first
     (:func:`~kiro_crew.acp_backends.backend_from_stored`): ``"kiro"`` is the Kiro
     CLI choice, while absent and ``""`` are "no choice" and read the field default.
-    A default is not a pick, so when the registry does not serve it (a policy
-    denies KAS) the gate gets ``None`` and takes the floor silently instead of
-    warning on every load about a value nobody wrote. Any other stored value goes
-    to the gate as is, so an unusable explicit pick still degrades with its
-    warning (harness-parity H3). ``validate_config_data`` replaces a present
-    non-string with the stored floor before this runs.
+    An unavailable default or explicit choice raises at that gate (H3).
+    A present non-string is marked by validation and refused here, rather than
+    silently selecting a different harness.
 
     For ``agent.member_acp_backend`` a stored ``"kiro"`` reads as KAS: crewmates
     run on KAS, the Kiro backend that carries the per-session dispatch tools a
@@ -496,11 +493,9 @@ def _read_backend_choice(section: _sections.SectionReader, agent_data: dict, key
     from kiro_crew.config.validation import MALFORMED_BACKEND_FLOOR
 
     if agent_data.get(key) == MALFORMED_BACKEND_FLOOR:
-        # The floor for an unusable value (``validate_config_data``), already
-        # warned about there: never a Kiro CLI pick, so never moved onto KAS.
-        from kiro_crew.acp_backends import GOVERNANCE_FLOOR_BACKEND
-
-        return GOVERNANCE_FLOOR_BACKEND
+        raise ValueError(
+            "Cannot reach AI: invalid backend configuration; no alternate backend was started."
+        )
     value = backend_from_stored(agent_data.get(key))
     if value is None:
         default = section.default(key)

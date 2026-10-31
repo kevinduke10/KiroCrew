@@ -1,0 +1,38 @@
+{
+  "repository": "kevinduke10/KiroCrew",
+  "environments": {
+    "dev": {
+      "account_id": null,
+      "region": "us-east-1",
+      "web_origin": "https://dev.example.com",
+      "callback_url": "https://dev.example.com/",
+      "logout_url": "https://dev.example.com/",
+      "cognito_domain_prefix": "configure-kirocrew-dev",
+      "embedding_model_arn": null,
+      "embedding_dimensions": 1024,
+      "hosted_zone_id": null
+    },
+    "test": {
+      "account_id": null,
+      "region": "us-east-1",
+      "web_origin": "https://test.example.com",
+      "callback_url": "https://test.example.com/",
+      "logout_url": "https://test.example.com/",
+      "cognito_domain_prefix": "configure-kirocrew-test",
+      "embedding_model_arn": null,
+      "embedding_dimensions": 1024,
+      "hosted_zone_id": null
+    },
+    "prod": {
+      "account_id": null,
+      "region": "us-east-1",
+      "web_origin": "https://prod.example.com",
+      "callback_url": "https://prod.example.com/",
+      "logout_url": "https://prod.example.com/",
+      "cognito_domain_prefix": "configure-kirocrew-prod",
+      "embedding_model_arn": null,
+      "embedding_dimensions": 1024,
+      "hosted_zone_id": null
+    }
+  }
+}

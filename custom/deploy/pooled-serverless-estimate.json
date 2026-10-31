@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "kind": "scenario_estimate",
+  "deployable": false,
+  "spec_id": "SPEC-0005",
+  "status": "selected_starting_architecture",
+  "checked_on": "2026-10-29",
+  "region": "us-east-1",
+  "currency": "USD",
+  "isolation": "logical_company_and_space_authorization_in_shared_infrastructure",
+  "cross_company_content_sharing": false,
+  "architecture": {
+    "frontend": "S3 and CloudFront",
+    "authentication": "Cognito",
+    "api": "API Gateway HTTP/WebSocket and Lambda",
+    "records": "DynamoDB on-demand",
+    "documents": "S3",
+    "semantic_memory_candidate": "S3 Vectors with company/space scoping",
+    "short_agent_jobs": "ordinary on-demand Lambda",
+    "long_or_untrusted_tool_jobs": "on-demand Fargate tasks with bounded resources and scoped permissions",
+    "async_delivery": "SQS/EventBridge and authenticated activity updates",
+    "no_fixed_idle_worker_per_company": true,
+    "no_nat_alb_rds_baseline": true
+  },
+  "per_company_workload": {
+    "monthly_active_users": 10,
+    "agent_jobs_monthly": 1000,
+    "average_worker_gib": 2,
+    "average_billed_worker_seconds_per_job": 120,
+    "browser_api_calls_monthly": 50000,
+    "average_ui_function_gib": 0.25,
+    "average_ui_function_seconds": 0.1,
+    "document_storage_gb": 1,
+    "record_storage_gb": 1,
+    "dynamodb_read_request_units_monthly": 1000000,
+    "dynamodb_write_request_units_monthly": 100000,
+    "vector_queries_monthly": 5000,
+    "vector_index_size": "small; allowance only",
+    "traffic": "light"
+  },
+  "rates": {
+    "lambda_x86_gib_second": 1.66667e-05,
+    "lambda_per_million_requests": 0.2,
+    "http_api_per_million_requests": 1.0,
+    "dynamodb_per_million_read_units": 0.125,
+    "dynamodb_per_million_write_units": 0.625,
+    "dynamodb_standard_storage_gb_month": 0.25,
+    "s3_standard_storage_gb_month": 0.023,
+    "cognito_federated_mau": 0.015
+  },
+  "planning_allowances": {
+    "shared_platform_usd_month": [
+      20,
+      60
+    ],
+    "per_company_usd_month": [
+      6,
+      15
+    ],
+    "includes": "Compute, modest API/database/document use, light semantic retrieval, authentication, logs, backups, queues and an operating cushion."
+  },
+  "excluded": [
+    "Bedrock generation and embedding inference",
+    "heavy vector ingestion or retrieval",
+    "large data transfer and storage",
+    "provisioned concurrency or reserved server capacity",
+    "large security/audit-log volume",
+    "advanced paid identity/security/support products",
+    "taxes",
+    "engineering and on-call labor"
+  ],
+  "assumptions": [
+    "No free tiers, credits or long-term purchase discounts are subtracted.",
+    "The Lambda job estimate is a conservative compute yardstick; Fargate duration, startup and networking need separate costing for the final tool workload.",
+    "Ordinary Lambda invocations are bounded to 15 minutes. Longer tasks require a different worker or checkpointing.",
+    "This requires a serverless application/storage design; the existing long-running gateway and local SQLite state cannot be deployed unchanged.",
+    "User selected pooled logical isolation on 2026-10-29; dedicated accounts are a future option. No cross-company sharing."
+  ],
+  "sources": {
+    "lambda": "https://aws.amazon.com/lambda/pricing/",
+    "api": "https://aws.amazon.com/api-gateway/pricing/",
+    "database": "https://aws.amazon.com/dynamodb/pricing/",
+    "s3_and_vectors": "https://aws.amazon.com/s3/pricing/",
+    "auth": "https://aws.amazon.com/cognito/pricing/",
+    "lambda_timeout": "https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html"
+  },
+  "derived_monthly_usd": {
+    "agent_worker_compute": 4.0,
+    "browser_function_compute": 0.0208,
+    "dynamodb_operations_and_storage": 0.4375,
+    "document_storage": 0.023,
+    "federated_sign_in_before_free_tier": 0.15,
+    "totals_by_company_count": {
+      "1": [
+        26,
+        75
+      ],
+      "10": [
+        80,
+        210
+      ],
+      "100": [
+        620,
+        1560
+      ],
+      "1000": [
+        6020,
+        15060
+      ]
+    }
+  }
+}

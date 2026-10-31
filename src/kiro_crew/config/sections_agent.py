@@ -221,8 +221,8 @@ class AgentConfig:
         default=DEFAULT_ACP_BACKEND,
         metadata=_meta(
             "ACP Backend",
-            "Which ACP agent to drive. Omitted or '' means no choice: KAS is the "
-            "default. 'kiro' selects kiro-cli; any other value must be a registered "
+            "Which ACP agent to drive. Omitted or '' means no choice: use the "
+            "native Bedrock default. 'kiro' explicitly selects kiro-cli; other values must be registered "
             "selectable backend id. The live list is served by GET /api/config/schema.",
             # Deliberately NO ``enum``. A literal here was frozen at import and fed
             # two import-time structures (``JSON_SCHEMA`` and ``SCHEMA_REGISTRY``),
@@ -237,11 +237,11 @@ class AgentConfig:
         ),
     )
     member_acp_backend: str = field(
-        default="kas",
+        default=DEFAULT_ACP_BACKEND,
         metadata=_meta(
             "Crew member ACP backend",
-            "Backend for crew-member DM sessions: 'kas' (default when omitted or '') "
-            "or another dispatch-capable backend (claude, codex, opencode, goose). "
+            "Backend for crew-member DM sessions: 'bedrock' when omitted or ''. "
+            "Select another dispatch-capable backend explicitly (claude, codex, opencode, goose). "
             "Crewmates run on KAS as their Kiro backend, so 'kiro' here also "
             "selects KAS. Members dispatch work into worker sessions through "
             "session-control tools mounted per session over the wire.",
